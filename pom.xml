@@ -91,7 +91,7 @@
 		<dependency>
 			<groupId>org.aspectj</groupId>
 			<artifactId>aspectjweaver</artifactId>
-			<version>${aspectj.version}</version>
+			<version>1.9.21</version>
 		</dependency>
 
 		<dependency>
@@ -135,7 +135,7 @@
 					<forkCount>3</forkCount>
 					<reuseForks>true</reuseForks>
 					<suiteXmlFiles>
-						<suiteXmlFile>src/test/resources/testrunners/testng_regression.xml</suiteXmlFile>
+						<!-- <suiteXmlFile>src/test/resources/testrunners/testng_regression.xml</suiteXmlFile> -->
 						<suiteXmlFile>${surefire.suiteXmlFiles}</suiteXmlFile>
 					</suiteXmlFiles>
 					
