@@ -135,8 +135,8 @@
 					<forkCount>3</forkCount>
 					<reuseForks>true</reuseForks>
 					<suiteXmlFiles>
-						<!-- <suiteXmlFile>src/test/resources/testrunners/testng_regression.xml</suiteXmlFile> -->
-						<suiteXmlFile>${surefire.suiteXmlFiles}</suiteXmlFile>
+						<suiteXmlFile>src/test/resources/testrunners/testng_regression.xml</suiteXmlFile> 
+<!--						<suiteXmlFile>${suiteXmlFiles}</suiteXmlFile>-->
 					</suiteXmlFiles>
 					
 					<argLine>
