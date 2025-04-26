@@ -9,7 +9,8 @@ pipeline {
         stage('Build') {
             steps {
                 git 'https://github.com/jglick/simple-maven-project-with-tests.git'
-                sh "mvn -Dmaven.test.failure.ignore=true clean package"
+           		sh "mvn -Dmaven.test.failure.ignore=true -Dsurefire.suiteXmlFiles=src/test/resources/testrunners/testng_regression.xml clean package"
+
             }
             post {
                 success {
