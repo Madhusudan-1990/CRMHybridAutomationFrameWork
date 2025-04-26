@@ -91,7 +91,7 @@
 		<dependency>
 			<groupId>org.aspectj</groupId>
 			<artifactId>aspectjweaver</artifactId>
-			<version>1.9.21</version>
+			<version>${aspectj.version}</version>
 		</dependency>
 
 		<dependency>
@@ -129,14 +129,14 @@
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-surefire-plugin</artifactId>
-				<version>3.2.5</version>
+				<version>3.0.0-M9</version>
 
 				<configuration>
 					<forkCount>3</forkCount>
 					<reuseForks>true</reuseForks>
 					<suiteXmlFiles>
 						<!-- <suiteXmlFile>src/test/resources/testrunners/testng_regression.xml</suiteXmlFile> -->
-						  <suiteXmlFile>${surefire.suiteXmlFiles}</suiteXmlFile>
+						<suiteXmlFile>${suiteXmlFile}</suiteXmlFile>
 					</suiteXmlFiles>
 					
 					<argLine>
