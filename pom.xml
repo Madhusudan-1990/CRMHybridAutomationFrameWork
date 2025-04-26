@@ -120,8 +120,8 @@
 				<artifactId>maven-compiler-plugin</artifactId>
 				<version>3.8.1</version>
 				<configuration>
-					 <maven.compiler.source>17</maven.compiler.source>
-        			 <maven.compiler.target>17</maven.compiler.target>
+  					<source>${maven.compiler.source}</source>
+  					<target>${maven.compiler.target}</target>
 				</configuration>
 			</plugin>
 
@@ -135,7 +135,7 @@
 					<forkCount>3</forkCount>
 					<reuseForks>true</reuseForks>
 					<suiteXmlFiles>
-						<!-- <suiteXmlFile>src/test/resources/testrunners/testng_regression.xml</suiteXmlFile> -->
+						<suiteXmlFile>src/test/resources/testrunners/testng_regression.xml</suiteXmlFile>
 						<suiteXmlFile>${surefire.suiteXmlFiles}</suiteXmlFile>
 					</suiteXmlFiles>
 					
