@@ -1,54 +1,43 @@
-pipeline 
-{
+pipeline {
     agent any
     
-    tools{
-        maven 'maven'
-        }
+    tools {
+        maven 'maven'  // Ensure Maven is installed and configured
+    }
 
-    stages 
-    {
-        stage('Build') 
-        {
-            steps
-            {
-                 git 'https://github.com/jglick/simple-maven-project-with-tests.git'
-                 sh "mvn -Dmaven.test.failure.ignore=true clean package"
+    stages {
+        stage('Build') {
+            steps {
+                git 'https://github.com/jglick/simple-maven-project-with-tests.git'
+                sh "mvn -Dmaven.test.failure.ignore=true clean package"
             }
-            post 
-            {
-                success
-                {
+            post {
+                success {
                     junit '**/target/surefire-reports/TEST-*.xml'
                     archiveArtifacts 'target/*.jar'
                 }
             }
         }
-        
-        
-        
-        
-        
-        stage("Deploy to QA"){
-            steps{
-                echo("deploy to qa")
+
+        stage("Deploy to QA") {
+            steps {
+                echo "Deploy to QA"
+                // Replace with actual deployment command
+                // sh './deploy-scripts/deploy-to-qa.sh'
             }
         }
-        
-                
+
         stage('Regression UI Automation Tests') {
             steps {
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
                     git 'https://github.com/Madhusudan-1990/CRMHybridAutomationFrameWork.git'
                     sh "mvn clean test -Dsurefire.suiteXmlFiles=src/test/resources/testrunners/testng_regression.xml"
-                    
                 }
             }
         }
-                
-     
+
         stage('Publish Allure Reports') {
-           steps {
+            steps {
                 script {
                     allure([
                         includeProperties: false,
@@ -60,58 +49,54 @@ pipeline
                 }
             }
         }
-        
-        
-        stage('Publish Extent Report'){
-            steps{
-                     publishHTML([allowMissing: false,
-                                  alwaysLinkToLastBuild: false, 
-                                  keepAll: true, 
-                                  reportDir: 'reports', 
-                                  reportFiles: 'TestExecutionReport.html', 
-                                  reportName: 'HTML Regression Extent Report', 
-                                  reportTitles: ''])
+
+        stage('Publish Extent Report') {
+            steps {
+                publishHTML([allowMissing: false,
+                             alwaysLinkToLastBuild: false,
+                             keepAll: true,
+                             reportDir: 'reports',
+                             reportFiles: 'TestExecutionReport.html',
+                             reportName: 'HTML Regression Extent Report',
+                             reportTitles: ''])
             }
         }
-        
-        stage("Deploy to Stage"){
-            steps{
-                echo("deploy to Stage")
+
+        stage("Deploy to Stage") {
+            steps {
+                echo "Deploy to Stage"
+                // Replace with actual deployment command
+                // sh './deploy-scripts/deploy-to-stage.sh'
             }
         }
-        
+
         stage('Sanity Automation Test') {
             steps {
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
                     git 'https://github.com/Madhusudan-1990/CRMHybridAutomationFrameWork.git'
                     sh "mvn clean test -Dsurefire.suiteXmlFiles=src/test/resources/testrunners/testng_sanity.xml -Denv=stage"
-                    
                 }
             }
         }
-        
-        
-        
-        stage('Publish sanity Extent Report'){
-            steps{
-                     publishHTML([allowMissing: false,
-                                  alwaysLinkToLastBuild: false, 
-                                  keepAll: true, 
-                                  reportDir: 'reports', 
-                                  reportFiles: 'TestExecutionReport.html', 
-                                  reportName: 'HTML Sanity Extent Report', 
-                                  reportTitles: ''])
+
+        stage('Publish Sanity Extent Report') {
+            steps {
+                publishHTML([allowMissing: false,
+                             alwaysLinkToLastBuild: false,
+                             keepAll: true,
+                             reportDir: 'reports',
+                             reportFiles: 'TestExecutionReport.html',
+                             reportName: 'HTML Sanity Extent Report',
+                             reportTitles: ''])
             }
         }
-        
-                
-        
-        stage("Deploy to PROD"){
-            steps{
-                echo("deploy to PROD")
+
+        stage("Deploy to PROD") {
+            steps {
+                echo "Deploy to PROD"
+                // Replace with actual deployment command
+                // sh './deploy-scripts/deploy-to-prod.sh'
             }
         }
-        
-        
     }
 }
