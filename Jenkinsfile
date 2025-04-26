@@ -9,7 +9,7 @@ pipeline {
         stage('Build') {
             steps {
                 git 'https://github.com/jglick/simple-maven-project-with-tests.git'
-           		sh "mvn -Dmaven.test.failure.ignore=true -Dsurefire.suiteXmlFiles=src/test/resources/testrunners/testng_regression.xml clean package"
+           		bat "mvn -Dmaven.test.failure.ignore=true -Dsurefire.suiteXmlFiles=src/test/resources/testrunners/testng_regression.xml clean package"
 
             }
             post {
@@ -24,7 +24,7 @@ pipeline {
             steps {
                 echo "Deploy to QA"
                 // Replace with actual deployment command
-                // sh './deploy-scripts/deploy-to-qa.sh'
+                // bat'./deploy-scripts/deploy-to-qa.sh'
             }
         }
 
@@ -32,7 +32,7 @@ pipeline {
             steps {
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
                     git 'https://github.com/Madhusudan-1990/CRMHybridAutomationFrameWork.git'
-                    sh "mvn clean test -Dsurefire.suiteXmlFiles=src/test/resources/testrunners/testng_regression.xml"
+                    bat "mvn clean test -Dsurefire.suiteXmlFiles=src/test/resources/testrunners/testng_regression.xml"
                 }
             }
         }
@@ -67,7 +67,7 @@ pipeline {
             steps {
                 echo "Deploy to Stage"
                 // Replace with actual deployment command
-                // sh './deploy-scripts/deploy-to-stage.sh'
+                // bat'./deploy-scripts/deploy-to-stage.sh'
             }
         }
 
@@ -75,7 +75,7 @@ pipeline {
             steps {
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
                     git 'https://github.com/Madhusudan-1990/CRMHybridAutomationFrameWork.git'
-                    sh "mvn clean test -Dsurefire.suiteXmlFiles=src/test/resources/testrunners/testng_sanity.xml -Denv=stage"
+                    bat "mvn clean test -Dsurefire.suiteXmlFiles=src/test/resources/testrunners/testng_sanity.xml -Denv=stage"
                 }
             }
         }
@@ -96,7 +96,7 @@ pipeline {
             steps {
                 echo "Deploy to PROD"
                 // Replace with actual deployment command
-                // sh './deploy-scripts/deploy-to-prod.sh'
+                // bat'./deploy-scripts/deploy-to-prod.sh'
             }
         }
     }
