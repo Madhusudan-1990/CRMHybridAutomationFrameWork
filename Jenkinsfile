@@ -40,7 +40,7 @@ pipeline
             steps {
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
                     git 'https://github.com/Madhusudan-1990/CRMHybridAutomationFrameWork.git'
-                   	bat "mvn clean test -Dsurefire.suiteXmlFiles=%WORKSPACE%\\src\\test\\resources\\testrunners\\testng_regression.xml"
+                   	bat "cd %WORKSPACE% && mvn clean test -Dsurefire.suiteXmlFiles=src/test/resources/testrunners/testng_regression.xml"
 
                     
                 }
