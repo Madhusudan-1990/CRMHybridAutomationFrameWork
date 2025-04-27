@@ -39,12 +39,12 @@
 			<version>4.31.0</version>
 		</dependency>
 
-		  <dependency>
-            <groupId>org.testng</groupId>
-            <artifactId>testng</artifactId>
-            <version>7.9.0</version>
-            <scope>test</scope>
-        </dependency>
+		 <dependency>
+    			<groupId>org.testng</groupId>
+    			<artifactId>testng</artifactId>
+    			<version>7.7.0</version> <!-- or any latest version you prefer -->
+    			<scope>test</scope>
+		</dependency>
 
 		<dependency>
 			<groupId>org.apache.poi</groupId>
