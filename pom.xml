@@ -139,7 +139,7 @@
 					<reuseForks>true</reuseForks>
 					<suiteXmlFiles>
 						<!--<suiteXmlFile>src/test/resources/testrunners/testng_regression.xml</suiteXmlFile> -->
-						<suiteXmlFile>${suiteXmlFiles}</suiteXmlFile>
+						 <suiteXmlFile>${surefire.suiteXmlFiles}</suiteXmlFile>
 					</suiteXmlFiles>
 					
 					<argLine>
