@@ -42,6 +42,7 @@
             <groupId>org.testng</groupId>
             <artifactId>testng</artifactId>
             <version>7.9.0</version>
+            <scope>test</scope>
         </dependency>
 
 		<dependency>
@@ -135,8 +136,8 @@
 					<forkCount>3</forkCount>
 					<reuseForks>true</reuseForks>
 					<suiteXmlFiles>
-						<suiteXmlFile>src/test/resources/testrunners/testng_regression.xml</suiteXmlFile> 
-<!--						<suiteXmlFile>${suiteXmlFiles}</suiteXmlFile>-->
+						<!--<suiteXmlFile>src/test/resources/testrunners/testng_regression.xml</suiteXmlFile> -->
+						<suiteXmlFile>${suiteXmlFiles}</suiteXmlFile>
 					</suiteXmlFiles>
 					
 					<argLine>
