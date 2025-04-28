@@ -50,7 +50,11 @@
     			<version>7.7.0</version> <!-- or any latest version you prefer -->
     			<scope>compile</scope>
 		</dependency>
-
+			<dependency>
+    <groupId>com.google.guava</groupId>
+    <artifactId>guava</artifactId>
+    <version>17.0</version>
+</dependency>
 		<dependency>
 			<groupId>org.apache.poi</groupId>
 			<artifactId>poi</artifactId>
