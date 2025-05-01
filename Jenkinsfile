@@ -8,7 +8,7 @@ pipeline {
     stages {
         stage('Build') {
             steps {
-                git 'https://github.com/jglick/simple-maven-project-with-tests.git'
+                git 'https://github.com/Madhusudan-1990/SampleDevRepoForJenkinsPipelineBuild.git'
                 bat "mvn -Dmaven.test.failure.ignore=true clean package"
             }
             post {
