@@ -57,6 +57,7 @@ public class LoginPage
 	public HomePage doLogin(String un,String pwd)
 	{
 //		eleUtil.doSendKeysWithPause(userName, un, AppConstants.DEFAULT_LONG_TIME_OUT);
+		eleUtil.doSendKeys(userName, ""); // Sending empty string for this field to avoid IllegalArgument Keys to send should be a not null when triggered through jenkins pipeline.
 		eleUtil.doSendKeys(userName, un);
 		eleUtil.doSendKeys(password, pwd);
 		eleUtil.doClick(loginBtn);
