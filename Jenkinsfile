@@ -8,7 +8,7 @@ pipeline {
     stages {
         stage('Build') {
             steps {
-                git 'https://github.com/Madhusudan-1990/SampleDevRepoForJenkinsPipelineBuild.git'
+                git branch: 'main', url: 'https://github.com/Madhusudan-1990/SampleDevRepoForJenkinsPipelineBuild.git'
                 bat "mvn -Dmaven.test.failure.ignore=true clean package"
             }
             post {
@@ -31,7 +31,7 @@ pipeline {
         stage('Regression UI Automation Tests') {
             steps {
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
-                    git 'https://github.com/Madhusudan-1990/CRMHybridAutomationFrameWork.git'
+                    git branch: 'main', url: 'https://github.com/Madhusudan-1990/CRMHybridAutomationFrameWork.git'
                     bat "mvn clean test -U -Dsurefire.suiteXmlFiles=src/test/resources/testrunners/testng_regression.xml"
                 }
             }
@@ -74,7 +74,7 @@ pipeline {
         stage('Sanity Automation Test') {
             steps {
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
-                    git 'https://github.com/Madhusudan-1990/CRMHybridAutomationFrameWork.git'
+                    git branch: 'main', url: 'https://github.com/Madhusudan-1990/CRMHybridAutomationFrameWork.git'
                     bat "mvn clean test -Dsurefire.suiteXmlFiles=src/test/resources/testrunners/testng_sanity.xml -Denv=stage"
                 }
             }
