@@ -30,6 +30,12 @@ public class OptionsManager
 			System.out.println(".....Running Chrome in incognito mode.....");
 			co.addArguments("--incognito");
 		}
+		if(Boolean.parseBoolean(prop.getProperty("remote")))
+		{
+			System.out.println(".....Running Chrome in remote mode.....");
+			co.setCapability("browserName", "chrome");
+//			co.setCapability("enableVNC", true);	
+		}
 		return co;
 	}
 	
@@ -46,6 +52,12 @@ public class OptionsManager
 			System.out.println(".....Running Firefox in incognito mode.....");
 			fo.addArguments("--incognito");
 		}
+		if(Boolean.parseBoolean(prop.getProperty("remote")))
+		{
+			System.out.println(".....Running Firefox in remote mode.....");
+			fo.setCapability("browserName", "firefox");
+//			fo.setCapability("enableVNC", true);	
+		}
 		return fo;
 	}
 	
@@ -61,6 +73,12 @@ public class OptionsManager
 		{
 			System.out.println(".....Running Edge in incognito mode.....");
 			eo.addArguments("--inPrivate");
+		}
+		if(Boolean.parseBoolean(prop.getProperty("remote")))
+		{
+			System.out.println(".....Running Edge in remote mode.....");
+			eo.setCapability("browserName", "edge");
+//			fo.setCapability("enableVNC", true);	
 		}
 		return eo;
 	}

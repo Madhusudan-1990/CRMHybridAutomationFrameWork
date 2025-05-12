@@ -4,6 +4,8 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.Properties;
 
 import org.apache.commons.io.FileUtils;
@@ -16,6 +18,8 @@ import org.openqa.selenium.firefox.FirefoxDriver;
 import org.openqa.selenium.ie.InternetExplorerDriver;
 import org.openqa.selenium.safari.SafariDriver;
 import org.openqa.selenium.io.FileHandler;
+import org.openqa.selenium.remote.RemoteWebDriver;
+
 import com.qa.crm.errors.AppError;
 import com.qa.crm.exceptions.BrowserException;
 import com.qa.crm.exceptions.*;
@@ -34,25 +38,47 @@ public class DriverFactory
 	public static String isHighlight;
 	//Thread Local class is used to distribute the driver across all the threads.
 	public static ThreadLocal<WebDriver>tlDriver = new ThreadLocal<WebDriver>();
+	OptionsManager optionManager;
 	
 	@Step("Initialize WebDriver with prop : {0}")
 	public WebDriver initDriver(Properties prop)
 	{
 		isHighlight = prop.getProperty("highlight");
 		
-		OptionsManager optionManager = new OptionsManager(prop);
+		optionManager = new OptionsManager(prop);
 		
 		String browserName = prop.getProperty("browser");
 		System.out.println("Browser Name : "+browserName);
 		switch(browserName.toLowerCase().trim())
 		{
 		case "chrome":
-			WebDriverManager.chromedriver().setup();
-			tlDriver.set(new ChromeDriver(optionManager.getChromeOptions()));
+			if(Boolean.parseBoolean(prop.getProperty("remote")))
+			{
+				// Run testcase on remote/container
+				init_remoteDriver("chrome");
+			}
+			else
+			{
+				// Run testcase in local
+				WebDriverManager.chromedriver().setup();
+				tlDriver.set(new ChromeDriver(optionManager.getChromeOptions()));
+			}
+			
+			
 			break;
 		case "firefox":
+			if(Boolean.parseBoolean(prop.getProperty("remote")))
+			{
+				// Run testcase on remote/container
+				init_remoteDriver("firefox");
+			}
+			else
+			{
+				// Run testcase in local
 			WebDriverManager.firefoxdriver().setup();
 			tlDriver.set(new FirefoxDriver(optionManager.getFirefoxOptions()));
+			}
+			
 			break;
 		case "safari":
 			WebDriverManager.safaridriver().setup();
@@ -63,8 +89,17 @@ public class DriverFactory
 			tlDriver.set(new InternetExplorerDriver());
 			break;		
 		case "edge":
-			WebDriverManager.edgedriver().setup();
-			tlDriver.set(new EdgeDriver(optionManager.getEdgeOptions()));
+			if(Boolean.parseBoolean(prop.getProperty("remote")))
+			{
+				// Run testcase on remote/container
+				init_remoteDriver("edge");
+			}
+			else
+			{
+				// Run testcase in local
+				WebDriverManager.edgedriver().setup();
+				tlDriver.set(new EdgeDriver(optionManager.getEdgeOptions()));
+			}
 			break;	
 
 		default:
@@ -78,6 +113,34 @@ public class DriverFactory
 		return getDriver();
 	}
 	
+	private void init_remoteDriver(String browserName) 
+	{
+		try {
+		switch(browserName.toLowerCase().trim())
+		{
+		
+		case "chrome":
+		tlDriver.set(new RemoteWebDriver(new URL(prop.getProperty("huburl")),optionManager.getChromeOptions()));
+				break;
+				
+		case "firefox":
+			tlDriver.set(new RemoteWebDriver(new URL(prop.getProperty("huburl")),optionManager.getFirefoxOptions()));
+			break;
+			
+		default:
+			System.out.println("Please pass valid Remote Browser Name ....");
+			throw new BrowserException(AppError.INVALID_BROWSER_MSG);
+
+		} 
+		
+		}
+		catch (MalformedURLException e) {
+			
+			e.printStackTrace();
+		}
+		
+	}
+
 	/**
 	 * This method is used to return the driver  with threadlocal
 	 * @return
@@ -104,7 +167,7 @@ public class DriverFactory
 			if(envName==null)
 			{
 
-				fis = new FileInputStream("./src/test/resources/config/config.properties");
+				fis = new FileInputStream("./src/test/resources/config/qa.config.properties");
 			}
 			else
 			{
