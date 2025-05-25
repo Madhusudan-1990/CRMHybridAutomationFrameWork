@@ -1,5 +1,7 @@
 package com.qa.crm.factory;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
 
 import org.openqa.selenium.chrome.ChromeOptions;
@@ -34,7 +36,11 @@ public class OptionsManager
 		{
 			System.out.println(".....Running Chrome in remote mode.....");
 			co.setCapability("browserName", "chrome");
-//			co.setCapability("enableVNC", true);	
+			Map<String, Object> selenoidOptions = new HashMap<>();
+			selenoidOptions.put("screenResolution", "1280x1024x24");
+			selenoidOptions.put("enableVNC", true);
+			selenoidOptions.put("name", prop.getProperty("testname"));
+			co.setCapability("selenoid:options", selenoidOptions);
 		}
 		return co;
 	}
@@ -56,7 +62,11 @@ public class OptionsManager
 		{
 			System.out.println(".....Running Firefox in remote mode.....");
 			fo.setCapability("browserName", "firefox");
-//			fo.setCapability("enableVNC", true);	
+			Map<String, Object> selenoidOptions = new HashMap<>();
+			selenoidOptions.put("screenResolution", "1280x1024x24");
+			selenoidOptions.put("enableVNC", true);
+			selenoidOptions.put("name", prop.getProperty("testname"));
+			fo.setCapability("selenoid:options", selenoidOptions);
 		}
 		return fo;
 	}
