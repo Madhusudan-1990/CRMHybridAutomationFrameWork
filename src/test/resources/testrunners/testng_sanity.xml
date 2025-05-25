@@ -8,6 +8,8 @@
   </listeners>
   <test name="Login Page Test">
   	<parameter name="browser" value="chrome"></parameter>
+	<parameter name="browserversion" value="115.0" />
+  	<parameter name="testname" value="Login Page Test" />
     <classes>
       <class name="com.qa.crm.tests.LoginPageTest"/>
     </classes>
