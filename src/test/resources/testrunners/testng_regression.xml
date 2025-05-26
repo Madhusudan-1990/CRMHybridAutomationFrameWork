@@ -8,7 +8,7 @@
   </listeners>
   <test name="Login Page Test">
   	<parameter name="browser" value="chrome"></parameter>
-  	<parameter name="browserversion" value="109.0" />
+  	<parameter name="browserversion" value="125.0" />
   	<parameter name="testname" value="Login Page Test" />
     <classes>
       <class name="com.qa.crm.tests.LoginPageTest"/>
@@ -17,7 +17,7 @@
   
   <test name="Home Page Test">
   <parameter name="browser" value="firefox"></parameter>
-  <parameter name="browserversion" value="83.0" />
+  <parameter name="browserversion" value="115.0" />
   <parameter name="testname" value="Home Page Test" />
     <classes>
       <class name="com.qa.crm.tests.HomePageTest"/>
@@ -26,7 +26,7 @@
   
   <test name="Contacts Page Test">
   <parameter name="browser" value="chrome"></parameter>
-  <parameter name="browserversion" value="109.0" />
+  <parameter name="browserversion" value="125.0" />
   <parameter name="testname" value="Contacts Page Tests" />
     <classes>
       <class name="com.qa.crm.tests.ContactsPageTest"/>
@@ -35,7 +35,7 @@
 
   <test name="Forms Page Test">
   <parameter name="browser" value="chrome"></parameter>
-  <parameter name="browserversion" value="109.0" /> 
+  <parameter name="browserversion" value="125.0" /> 
   <parameter name="testname" value="Forms Page Test" />
     <classes>
       <class name="com.qa.crm.tests.FormPageTest"/>
