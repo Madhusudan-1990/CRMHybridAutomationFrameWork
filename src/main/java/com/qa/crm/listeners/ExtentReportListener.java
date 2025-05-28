@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.LocalDateTime;
 import java.util.Calendar;
 import java.util.Date;
 
@@ -26,7 +27,7 @@ public class ExtentReportListener implements ITestListener {
 	private static ExtentReports extent = init();
 	public static ThreadLocal<ExtentTest> test = new ThreadLocal<ExtentTest>();
 	private static ExtentReports extentReports;
-	
+	private TestStatus testStatus;
 
 	private static ExtentReports init() {
 
@@ -68,6 +69,7 @@ public class ExtentReportListener implements ITestListener {
 
 	@Override
 	public synchronized void onTestStart(ITestResult result) {
+		this.testStatus = new TestStatus();
 		String methodName = result.getMethod().getMethodName();
 		String qualifiedName = result.getMethod().getQualifiedName();
 		int last = qualifiedName.lastIndexOf(".");
@@ -89,6 +91,7 @@ public class ExtentReportListener implements ITestListener {
 	}
 
 	public synchronized void onTestSuccess(ITestResult result) {
+		this.sendStatus(result,"PASS");
 		String methodName = result.getMethod().getMethodName();
 		System.out.println((methodName + " passed!"));
 		test.get().pass("Test passed");
@@ -97,6 +100,7 @@ public class ExtentReportListener implements ITestListener {
 	}
 
 	public synchronized void onTestFailure(ITestResult result) {
+		this.sendStatus(result,"FAIL");
 		System.out.println((result.getMethod().getMethodName() + " failed!"));
 		String methodName = result.getMethod().getMethodName();
 		test.get().fail("Test failed");
@@ -105,6 +109,7 @@ public class ExtentReportListener implements ITestListener {
 	}
 
 	public synchronized void onTestSkipped(ITestResult result) {
+		this.sendStatus(result,"SKIPPED");
 		System.out.println((result.getMethod().getMethodName() + " skipped!"));
 		String methodName = result.getMethod().getMethodName();
 		test.get().skip("Test skipped");
@@ -121,5 +126,13 @@ public class ExtentReportListener implements ITestListener {
 		calendar.setTimeInMillis(millis);
 		return calendar.getTime();
 	}
+	
+	 private void sendStatus(ITestResult iTestResult, String status){
+	        this.testStatus.setTestClass(iTestResult.getTestClass().getName());
+	        this.testStatus.setDescription(iTestResult.getMethod().getDescription());
+	        this.testStatus.setStatus(status);
+	        this.testStatus.setExecutionDate(LocalDateTime.now().toString());
+	        ResultSender.send(this.testStatus);
+	    }
 
 }
