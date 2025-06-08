@@ -131,7 +131,7 @@ public class ExtentReportListener implements ITestListener {
 	        this.testStatus.setTestClass(iTestResult.getTestClass().getName());
 	        this.testStatus.setDescription(iTestResult.getMethod().getDescription());
 	        this.testStatus.setStatus(status);
-	        this.testStatus.setExecutionDate(LocalDateTime.now().toString());
+	        this.testStatus.setExecutionTime(LocalDateTime.now().toString());
 	        ResultSender.send(this.testStatus);
 	    }
 

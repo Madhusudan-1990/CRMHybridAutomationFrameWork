@@ -20,7 +20,7 @@ public class TestStatus {
         this.description = description;
     }
 
-    public void setExecutionDate(String executionTime) {
+    public void setExecutionTime(String executionTime) {
         this.executionTime = executionTime;
     }
 
@@ -31,5 +31,4 @@ public class TestStatus {
     public void setTestClass(String testClass) {
         this.testClass = testClass;
     }
-
 }
