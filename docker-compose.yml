@@ -1,0 +1,72 @@
+# ---------------------------------------------------------------------------
+# Local Selenium Grid + the automation framework, all as containers.
+#
+#   docker compose up --build --abort-on-container-exit
+#   docker compose down -v
+#
+# Services:
+#   hub     - Selenium Grid 4 hub, the single entry point the framework talks to
+#   chrome  - a Chrome node that registers itself with the hub, 2 sessions max
+#   tests   - our framework, runs the TestNG suite and writes reports to the host
+# ---------------------------------------------------------------------------
+name: crm-automation
+
+services:
+
+  hub:
+    image: selenium/hub:4.27.0
+    container_name: selenium-hub
+    ports:
+      - "4444:4444"   # grid console + the wd/hub endpoint
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4444/wd/hub/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  chrome:
+    image: selenium/node-chrome:4.27.0
+    depends_on:
+      hub:
+        condition: service_healthy
+    shm_size: 2gb            # chrome dies with the default 64MB shared memory
+    environment:
+      SE_EVENT_BUS_HOST: hub
+      SE_EVENT_BUS_PUBLISH_PORT: 4444
+      SE_EVENT_BUS_SUBSCRIBE_PORT: 4444
+      SE_NODE_MAX_SESSIONS: "2"
+      SE_NODE_OVERRIDE_MAX_SESSIONS: "true"
+      SE_NODE_SESSION_TIMEOUT: "300"
+    ports:
+      - "7901:7900"          # live VNC view of the running browser at http://localhost:7901
+
+  tests:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: crm-tests:1.0
+    container_name: crm-tests
+    depends_on:
+      hub:
+        condition: service_healthy
+      chrome:
+        condition: service_started
+    environment:
+      ENV: qa                # selects qa.config.properties
+      BROWSER: chrome
+      HEADLESS: "true"
+      REMOTE: "true"
+      CONTAINER: "true"
+      HUB_URL: http://selenium-hub:4444/wd/hub
+      URL: https://ui.cogmento.com/
+      USERNAME: ${CRM_USERNAME:-}
+      PASSWORD: ${CRM_PASSWORD:-}
+      MAVEN_OPTS: "-Xmx1g"
+    # run as the host user, so the reports written to the bind mounts are owned by you
+    user: "${UID:-1000}:${GID:-1000}"
+    volumes:
+      - ./reports:/app/reports                        # extent report output
+      - ./screenshot:/app/screenshot                  # failure screenshots
+      - ./allure-results:/app/allure-results          # allure raw results
+      - ./surefire-reports:/app/target/surefire-reports   # junit xml for jenkins

@@ -1,0 +1,15 @@
+# The report volume. The Job writes extent/allure/surefire output here so the
+# reports survive after the test pod is deleted and can be published by CI.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: crm-test-reports
+  namespace: qa-automation
+  labels:
+    app.kubernetes.io/part-of: crm-automation
+spec:
+  accessModes:
+    - ReadWriteMany      # ci pod and the report publisher both mount it
+  resources:
+    requests:
+      storage: 2Gi

@@ -27,6 +27,12 @@ public class OptionsManager
 			System.out.println(".....Running Chrome in headless mode.....");
 			co.addArguments("--headless", "--disable-gpu", "--window-size=1920,1080");
 		}
+		if(Boolean.parseBoolean(prop.getProperty("container")))
+		{
+			System.out.println(".....Running Chrome inside a docker container.....");
+			//chrome crashes with the sandbox in a container and with the default 64MB /dev/shm
+			co.addArguments("--no-sandbox", "--disable-dev-shm-usage");
+		}
 		if(Boolean.parseBoolean(prop.getProperty("incognito")))
 		{
 			System.out.println(".....Running Chrome in incognito mode.....");
@@ -78,6 +84,11 @@ public class OptionsManager
 		{
 			System.out.println(".....Running Edge in headless mode.....");
 			eo.addArguments("--headless", "--disable-gpu", "--window-size=1920,1080");
+		}
+		if(Boolean.parseBoolean(prop.getProperty("container")))
+		{
+			System.out.println(".....Running Edge inside a docker container.....");
+			eo.addArguments("--no-sandbox", "--disable-dev-shm-usage");
 		}
 		if(Boolean.parseBoolean(prop.getProperty("incognito")))
 		{

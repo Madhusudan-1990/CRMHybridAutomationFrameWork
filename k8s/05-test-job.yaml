@@ -1,0 +1,73 @@
+# The actual test run. A Job, not a Deployment, because it must run to
+# completion and exit. backoffLimit=0 means a real test failure does not
+# get silently retried 6 times by kubernetes.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: crm-regression
+  namespace: qa-automation
+  labels:
+    app: crm-tests
+    app.kubernetes.io/part-of: crm-automation
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 3600
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: crm-tests
+        app.kubernetes.io/part-of: crm-automation
+    spec:
+      restartPolicy: Never
+      # fsGroup lets the non-root image user (uid 10001) write to the PVC
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+      containers:
+        - name: tests
+          # pushed to your registry after: docker build -t <registry>/crm-tests:1.0 .
+          image: ghcr.io/madhusudan-1990/crm-tests:1.0
+          imagePullPolicy: Always
+          envFrom:
+            - configMapRef:
+                name: crm-framework-config
+            - secretRef:
+                name: crm-framework-credentials
+          command: ["mvn"]
+          args:
+            - "-B"
+            - "test"
+            - "-Dsurefire.suiteXmlFiles=$(SUITE_XML)"
+          volumeMounts:
+            - name: reports
+              mountPath: /app/reports
+              subPath: reports            # one pvc, a folder each, so they do not collide
+            - name: screenshots
+              mountPath: /app/screenshot
+            - name: allure
+              mountPath: /app/allure-results
+              subPath: allure-results
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: "1"
+              memory: 2Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: reports
+          persistentVolumeClaim:
+            claimName: crm-test-reports
+        - name: allure
+          persistentVolumeClaim:
+            claimName: crm-test-reports
+        # screenshots are throw away, a pod local emptyDir is enough
+        - name: screenshots
+          emptyDir: {}

@@ -34,6 +34,8 @@ built with **Selenium WebDriver · TestNG · Maven · Page Object Model**
 - [Configuration](#-configuration)
 - [Reporting](#-reporting)
 - [CI/CD Pipeline](#-cicd-pipeline)
+- [Docker](#-docker)
+- [Kubernetes](#%EF%B8%8F-kubernetes)
 - [Test Data Management](#-test-data-management)
 - [Extending the Framework](#-extending-the-framework)
 - [Troubleshooting](#-troubleshooting)
@@ -375,6 +377,110 @@ The repository ships with a **declarative Jenkins pipeline** (`Jenkinsfile`):
 | Sanity | `mvn clean test -Dsurefire.suiteXmlFiles=…/testng_sanity.xml -Denv=stage` | Extent HTML |
 
 > The regression and sanity stages use `catchError` so a failing test suite marks the *stage* as failed while still allowing reports to publish.
+
+---
+
+## 🐳 Docker
+
+The whole suite runs in containers. No local JDK, no local Chrome, no local
+Selenium — which is exactly why it works the same on a laptop, on Jenkins and
+in the cluster.
+
+| File | What it does |
+|---|---|
+| `Dockerfile` | Two stages. Stage 1 caches the Maven dependencies and packages the jar. Stage 2 is the test runner image that gets pushed to the registry |
+| `.dockerignore` | Keeps `.git`, `target/`, `reports/` and secrets out of the build context |
+| `docker-compose.yml` | Wires up three services: `hub`, `chrome` and `tests` on one network |
+| `Jenkinsfile_docker` | The same pipeline, but every stage runs in a container |
+
+### Run the whole grid with one command
+
+```bash
+export CRM_USERNAME=you@example.com
+export CRM_PASSWORD=secret
+docker compose up --build --abort-on-container-exit
+```
+
+`docker compose up` starts the hub, waits for its healthcheck, starts the
+Chrome node, and only then runs the `tests` container. The framework inside
+resolves the browser at `http://selenium-hub:4444/wd/hub`, which is the
+service name on the compose network.
+
+Open <http://localhost:4444/grid/console> to see the grid, or
+<http://localhost:7901> to watch the browser live over VNC.
+
+Reports land on your host, owned by you:
+
+```
+./reports/TestExecutionReport.html    Extent
+./allure-results/                     Allure raw results
+./surefire-reports/                   JUnit XML for Jenkins
+./screenshot/                         Failure screenshots
+```
+
+### One suite, not the whole regression
+
+```bash
+docker compose run --rm -e SUITE_XML=src/test/resources/testrunners/testng_smoke.xml tests
+```
+
+### How the config gets into the container
+
+`DriverFactory.initProp()` loads the `.properties` file as before, then
+**environment variables override it**:
+
+| Env var | Property it sets |
+|---|---|
+| `ENV` | selects `qa/dev/stage/uat/prod.config.properties` |
+| `BROWSER` | `browser` |
+| `REMOTE` | `remote` |
+| `HUB_URL` | `huburl` |
+| `HEADLESS` / `INCOGNITO` / `HIGHLIGHT` | same names, lowercased |
+| `CONTAINER` | adds `--no-sandbox --disable-dev-shm-usage` to Chrome |
+| `USERNAME` / `PASSWORD` | `username` / `password` |
+
+So the same image runs the regression on QA and the smoke suite on Stage by
+changing two env vars, never by editing a file and rebuilding.
+
+---
+
+## ☸️ Kubernetes
+
+Same containers, one step up. Everything lives in the `qa-automation`
+namespace. See [`k8s/README.md`](k8s/README.md) for the full walkthrough.
+
+| File | Object | What it does |
+|---|---|---|
+| `k8s/00-namespace.yaml` | Namespace | Isolates the grid from the rest of the cluster |
+| `k8s/01-configmap.yaml` | ConfigMap | Injects `ENV`, `BROWSER`, `REMOTE`, `HUB_URL`, `URL` as env vars — the same ones `initProp()` reads |
+| `k8s/02-secret.example.yaml` | Secret (template) | Credentials. The real `02-secret.yaml` is **gitignored** |
+| `k8s/03-grid-hub.yaml` | Service + Deployment | The Grid 4 hub. The Service name `selenium-hub` is the hostname the tests use |
+| `k8s/04-grid-node.yaml` | Deployment | Chrome nodes. `replicas` = parallel capacity |
+| `k8s/05-test-job.yaml` | Job | Runs `mvn test` and exits 0 or 1. This is what CI triggers |
+| `k8s/06-pvc.yaml` | PVC | Shared volume so reports outlive the pod |
+
+### Build, push, run
+
+```bash
+docker build -t ghcr.io/madhusudan-1990/crm-tests:1.0 .
+docker push ghcr.io/madhusudan-1990/crm-tests:1.0
+
+kubectl apply -f k8s/00-namespace.yaml -f k8s/01-configmap.yaml -f k8s/06-pvc.yaml
+kubectl apply -f k8s/03-grid-hub.yaml -f k8s/04-grid-node.yaml
+kubectl apply -f k8s/05-test-job.yaml
+
+kubectl -n qa-automation logs job/crm-regression -f
+```
+
+### Three things that catch people out
+
+1. **`/dev/shm` is 64 MB by default** and Chrome dies with `Tab crashed`.
+   `04-grid-node.yaml` mounts an `emptyDir` with `medium: Memory` and
+   `sizeLimit: 2Gi` at `/dev/shm`.
+2. **`fsGroup: 10001`** on the Job is what lets the non-root image user write
+   into the PVC. Without it you get `Permission denied` on `/app/reports`.
+3. **A Job is immutable.** `kubectl apply` on a modified Job is a silent no-op.
+   Delete it first: `kubectl -n qa-automation delete job crm-regression`.
 
 ---
 

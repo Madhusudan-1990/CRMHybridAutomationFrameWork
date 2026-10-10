@@ -3,6 +3,10 @@ screenshot/
 test-output/
 build/
 reports/
+surefire-reports/
+
+# real kubernetes credentials never get committed, only the example template does
+k8s/02-secret.yaml
 
 application.log
 ##############################

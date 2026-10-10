@@ -1,0 +1,120 @@
+// Dockerised pipeline: every stage runs in a container, nothing is installed
+// on the Jenkins agent except docker itself.
+//
+// Prerequisites on the Jenkins agent:
+//   - docker
+//   - a registry credential with id "dockerhub" (username + API token)
+pipeline {
+    agent any
+
+    environment {
+        REGISTRY   = 'ghcr.io'
+        IMAGE      = "ghcr.io/madhusudan-1990/crm-tests"
+        TAG        = "${env.BUILD_NUMBER}"
+        SUITE_XML  = 'src/test/resources/testrunners/testng_regression.xml'
+        HUB_URL    = 'http://selenium-hub:4444/wd/hub'
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Build image') {
+            steps {
+                // layer cache keeps the maven dependency download out of the hot path
+                sh 'docker build --pull -t $IMAGE:$TAG -t $IMAGE:latest .'
+            }
+        }
+
+        stage('Start Selenium Grid') {
+            steps {
+                // detach so the pipeline keeps going, then wait for the hub to be READY
+                sh '''
+                    docker compose up -d --wait hub chrome
+                    curl -sf http://localhost:4444/wd/hub/status | grep -q '"ready": *true'
+                    echo "Grid is up, sessions available: $(curl -s http://localhost:4444/wd/hub/status | grep -o '"maxSessions":[0-9]*' | head -1)"
+                '''
+            }
+        }
+
+        stage('Run tests in container') {
+            steps {
+                // the tests container joins the compose network, so it can
+                // resolve the hostname selenium-hub directly
+                sh '''
+                    docker compose run --rm \
+                      -e USERNAME="$CRM_USERNAME" \
+                      -e PASSWORD="$CRM_PASSWORD" \
+                      -e SUITE_XML="$SUITE_XML" \
+                      tests
+                '''
+            }
+        }
+
+        stage('Publish reports') {
+            steps {
+                junit allowEmptyResults: true, testResults: 'surefire-reports/TEST-*.xml'
+                allure includeProperties: false, results: [[path: 'allure-results']]
+                publishHTML([
+                    allowMissing: true,
+                    alwaysLinkToLastBuild: true,
+                    keepAll: true,
+                    reportDir: 'reports',
+                    reportFiles: 'TestExecutionReport.html',
+                    reportName: 'HTML Regression Extent Report'
+                ])
+            }
+        }
+
+        stage('Push image') {
+            when {
+                branch 'main'
+            }
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub',
+                                                  usernameVariable: 'REG_USER',
+                                                  passwordVariable: 'REG_PASS')]) {
+                    sh '''
+                        echo "$REG_PASS" | docker login $REGISTRY -u "$REG_USER" --password-stdin
+                        docker push $IMAGE:$TAG
+                        docker push $IMAGE:latest
+                    '''
+                }
+            }
+        }
+
+        stage('Deploy test Job to kubernetes') {
+            when {
+                branch 'main'
+            }
+            steps {
+                // the same manifest, only the image tag changes per build
+                sh '''
+                    sed -i "s|image: $REGISTRY/madhusudan-1990/crm-tests:1.0|image: $IMAGE:$TAG|" k8s/05-test-job.yaml
+                    kubectl -n qa-automation delete job crm-regression --ignore-not-found
+                    kubectl apply -f k8s/05-test-job.yaml
+                    kubectl -n qa-automation wait --for=condition=complete job/crm-regression --timeout=30m || \\
+                    kubectl -n qa-automation wait --for=condition=failed  job/crm-regression --timeout=5m
+                    kubectl -n qa-automation logs job/crm-regression --tail=100
+                '''
+            }
+        }
+    }
+
+    post {
+        always {
+            // teardown even when the tests fail, otherwise the grid stays up
+            sh 'docker compose down -v --remove-orphans || true'
+        }
+        success {
+            echo 'Regression suite passed.'
+        }
+        failure {
+            echo 'Check the Extent report for the failed step screenshots.'
+        }
+    }
+}

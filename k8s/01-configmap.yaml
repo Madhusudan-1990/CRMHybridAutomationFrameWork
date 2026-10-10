@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: crm-framework-config
+  namespace: qa-automation
+  labels:
+    app.kubernetes.io/part-of: crm-automation
+data:
+  # these become the env vars our DriverFactory.initProp() reads
+  ENV: "qa"
+  BROWSER: "chrome"
+  HEADLESS: "true"
+  INCOGNITO: "false"
+  HIGHLIGHT: "false"
+  REMOTE: "true"
+  CONTAINER: "true"
+  HUB_URL: "http://selenium-hub:4444/wd/hub"
+  URL: "https://ui.cogmento.com/"
+  # which suite to run, swap to testng_smoke.xml for a quick regression gate
+  SUITE_XML: "src/test/resources/testrunners/testng_regression.xml"

@@ -1,0 +1,23 @@
+# what never belongs inside the image
+.git
+.gitignore
+.idea
+*.iml
+target/
+reports/
+screenshot/
+allure-results/
+test-output/
+build/
+debug.log
+application.log
+Dockerfile
+docker-compose.yml
+k8s/
+Jenkinsfile
+Jenkinsfile_sample
+Jenkinsfile_docker
+README.md
+skill.md
+.vscode
+.DS_Store

@@ -1,0 +1,75 @@
+# Chrome nodes register themselves with the hub Service named "selenium-hub".
+# replicas = the number of parallel Chrome sessions the grid can serve.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: selenium-chrome-node
+  namespace: qa-automation
+  labels:
+    app: selenium-chrome-node
+    app.kubernetes.io/part-of: crm-automation
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: selenium-chrome-node
+  template:
+    metadata:
+      labels:
+        app: selenium-chrome-node
+        app.kubernetes.io/part-of: crm-automation
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1200
+      containers:
+        - name: node-chrome
+          image: selenium/node-chrome:4.27.0
+          ports:
+            - containerPort: 5555
+              name: node
+            - containerPort: 7900
+              name: vnc
+          env:
+            - name: SE_EVENT_BUS_HOST
+              value: selenium-hub
+            - name: SE_EVENT_BUS_PUBLISH_PORT
+              value: "4444"
+            - name: SE_EVENT_BUS_SUBSCRIBE_PORT
+              value: "4444"
+            # 2 browser slots per node, matches thread-count=4 over 2 nodes
+            - name: SE_NODE_MAX_SESSIONS
+              value: "2"
+            - name: SE_NODE_OVERRIDE_MAX_SESSIONS
+              value: "true"
+            - name: SE_NODE_SESSION_TIMEOUT
+              value: "300"
+          resources:
+            requests:
+              cpu: "1"
+              memory: 2Gi
+            limits:
+              cpu: "2"
+              memory: 4Gi
+          # chrome writes crash dumps and shared memory here. The default
+          # container /dev/shm is 64MB, which makes chrome crash mid-test.
+          volumeMounts:
+            - name: dshm
+              mountPath: /dev/shm
+          # the node listens on 5555 and pushes its registration to the hub.
+          # a tcp check is enough here, the grid console shows it as READY.
+          readinessProbe:
+            tcpSocket:
+              port: 5555
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 12
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 2Gi

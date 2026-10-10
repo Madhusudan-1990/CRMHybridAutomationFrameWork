@@ -162,6 +162,11 @@ public class DriverFactory
 		FileInputStream fis = null;
 
 		String envName = System.getProperty("env");
+		if(envName==null)
+		{
+			//running inside docker/k8s, config is injected as an env var
+			envName = System.getenv("ENV");
+		}
 		System.out.println("Running tests on env : " +envName);
 		try {
 			if(envName==null)
@@ -203,7 +208,36 @@ public class DriverFactory
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
+		//docker/kubernetes overrides: container env vars always win over the .properties file
+		overrideFromEnv(prop, "ENV_NAME");
+		overrideFromEnv(prop, "BROWSER");
+		overrideFromEnv(prop, "URL");
+		overrideFromEnv(prop, "USERNAME");
+		overrideFromEnv(prop, "PASSWORD");
+		overrideFromEnv(prop, "HEADLESS");
+		overrideFromEnv(prop, "INCOGNITO");
+		overrideFromEnv(prop, "HIGHLIGHT");
+		overrideFromEnv(prop, "REMOTE");
+		overrideFromEnv(prop, "HUB_URL");
+		overrideFromEnv(prop, "CONTAINER");
 		return prop;
+	}
+
+	/**
+	 * Overriding single property with the env variable, if provided.
+	 * e.g. HUB_URL=http://selenium-hub:4444/wd/hub docker compose up tests
+	 * @param prop
+	 * @param key
+	 */
+	private void overrideFromEnv(Properties prop, String key)
+	{
+		String value = System.getenv(key);
+		if(value!=null && !value.trim().isEmpty())
+		{
+			//HUB_URL -> huburl
+			prop.setProperty(key.replace("_", "").toLowerCase(), value.trim());
+			System.out.println("Overriding [" + key.replace("_", "").toLowerCase() + "] with env variable [" + key + "] = " + value);
+		}
 	}
 	
 	/**

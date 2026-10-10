@@ -1,0 +1,79 @@
+# Selenium Grid 4 Hub. All test traffic goes through this Service DNS name.
+apiVersion: v1
+kind: Service
+metadata:
+  name: selenium-hub
+  namespace: qa-automation
+  labels:
+    app: selenium-hub
+    app.kubernetes.io/part-of: crm-automation
+spec:
+  selector:
+    app: selenium-hub
+  ports:
+    - name: http
+      port: 4444
+      targetPort: 4444
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: selenium-hub
+  namespace: qa-automation
+  labels:
+    app: selenium-hub
+    app.kubernetes.io/part-of: crm-automation
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: selenium-hub
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app: selenium-hub
+        app.kubernetes.io/part-of: crm-automation
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1200
+      containers:
+        - name: hub
+          image: selenium/hub:4.27.0
+          ports:
+            - containerPort: 4444
+              name: http
+          env:
+            - name: SE_SESSION_REQUEST_TIMEOUT
+              value: "300"
+            - name: SE_SESSION_RETRY_INTERVAL
+              value: "10"
+          readinessProbe:
+            httpGet:
+              path: /wd/hub/status
+              port: 4444
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /wd/hub/status
+              port: 4444
+            initialDelaySeconds: 40
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
