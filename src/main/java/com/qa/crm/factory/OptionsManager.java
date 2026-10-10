@@ -22,6 +22,13 @@ public class OptionsManager
 	public ChromeOptions getChromeOptions()
 	{
 		co = new ChromeOptions();
+		//inside a container chromium is not on the default path, so point chrome at it
+		String chromeBinary = prop.getProperty("chromebinary");
+		if(chromeBinary!=null && !chromeBinary.trim().isEmpty())
+		{
+			System.out.println(".....Using chrome binary from: " + chromeBinary + ".....");
+			co.setBinary(chromeBinary);
+		}
 		if(Boolean.parseBoolean(prop.getProperty("headless")))
 		{
 			System.out.println(".....Running Chrome in headless mode.....");

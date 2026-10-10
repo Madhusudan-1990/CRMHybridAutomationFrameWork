@@ -1,45 +1,16 @@
 # ---------------------------------------------------------------------------
-# Local Selenium Grid + the automation framework, all as containers.
+# Local run of the framework, browser inside the container.
 #
+#   export CRM_USERNAME=you@example.com CRM_PASSWORD=secret
 #   docker compose up --build --abort-on-container-exit
-#   docker compose down -v
 #
-# Services:
-#   hub     - Selenium Grid 4 hub, the single entry point the framework talks to
-#   chrome  - a Chrome node that registers itself with the hub, 2 sessions max
-#   tests   - our framework, runs the TestNG suite and writes reports to the host
+# No Selenium Grid here - the image ships headless Chrome, so one container is a
+# complete test environment. Real parallelism across pods is a Kubernetes thing;
+# see k8s/05-test-job.yaml, which shards the suite with an indexed Job.
 # ---------------------------------------------------------------------------
 name: crm-automation
 
 services:
-
-  hub:
-    image: selenium/hub:4.27.0
-    container_name: selenium-hub
-    ports:
-      - "4444:4444"   # grid console + the wd/hub endpoint
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4444/wd/hub/status"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 20s
-
-  chrome:
-    image: selenium/node-chrome:4.27.0
-    depends_on:
-      hub:
-        condition: service_healthy
-    shm_size: 2gb            # chrome dies with the default 64MB shared memory
-    environment:
-      SE_EVENT_BUS_HOST: hub
-      SE_EVENT_BUS_PUBLISH_PORT: 4444
-      SE_EVENT_BUS_SUBSCRIBE_PORT: 4444
-      SE_NODE_MAX_SESSIONS: "2"
-      SE_NODE_OVERRIDE_MAX_SESSIONS: "true"
-      SE_NODE_SESSION_TIMEOUT: "300"
-    ports:
-      - "7901:7900"          # live VNC view of the running browser at http://localhost:7901
 
   tests:
     build:
@@ -47,26 +18,27 @@ services:
       dockerfile: Dockerfile
     image: crm-tests:1.0
     container_name: crm-tests
-    depends_on:
-      hub:
-        condition: service_healthy
-      chrome:
-        condition: service_started
     environment:
-      ENV: qa                # selects qa.config.properties
+      ENV: qa                     # selects qa.config.properties
       BROWSER: chrome
       HEADLESS: "true"
-      REMOTE: "true"
-      CONTAINER: "true"
-      HUB_URL: http://selenium-hub:4444/wd/hub
+      REMOTE: "false"             # local ChromeDriver, not a Grid
+      CONTAINER: "true"           # adds --no-sandbox --disable-dev-shm-usage
       URL: https://ui.cogmento.com/
+      CHROME_BINARY: /usr/bin/google-chrome
+      DRIVER_PATH: /usr/local/bin/chromedriver
+      SUITE_XML: src/test/resources/testrunners/testng_shard.xml
+      SHARD_COUNT: "1"
+      SHARD_INDEX: "0"
       USERNAME: ${CRM_USERNAME:-}
       PASSWORD: ${CRM_PASSWORD:-}
+      # chrome needs more than the default 64MB of shared memory
       MAVEN_OPTS: "-Xmx1g"
-    # run as the host user, so the reports written to the bind mounts are owned by you
+    shm_size: 2gb
+    # run as your host uid so the reports written to the bind mounts are owned by you
     user: "${UID:-1000}:${GID:-1000}"
     volumes:
-      - ./reports:/app/reports                        # extent report output
-      - ./screenshot:/app/screenshot                  # failure screenshots
-      - ./allure-results:/app/allure-results          # allure raw results
-      - ./surefire-reports:/app/target/surefire-reports   # junit xml for jenkins
+      - ./reports:/app/tests/reports                        # extent report output
+      - ./screenshot:/app/tests/screenshot                  # failure screenshots
+      - ./allure-results:/app/tests/allure-results          # allure raw results
+      - ./surefire-reports:/app/tests/target/surefire-reports   # junit xml for jenkins

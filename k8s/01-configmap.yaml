@@ -6,15 +6,18 @@ metadata:
   labels:
     app.kubernetes.io/part-of: crm-automation
 data:
-  # these become the env vars our DriverFactory.initProp() reads
+  # these become the env vars DriverFactory.initProp() reads and lets override the
+  # .properties files, so the same image runs any environment
   ENV: "qa"
   BROWSER: "chrome"
   HEADLESS: "true"
-  INCOGNITO: "false"
-  HIGHLIGHT: "false"
-  REMOTE: "true"
+  REMOTE: "false"          # headless chrome is in the image, no Grid to talk to
   CONTAINER: "true"
-  HUB_URL: "http://selenium-hub:4444/wd/hub"
   URL: "https://ui.cogmento.com/"
-  # which suite to run, swap to testng_smoke.xml for a quick regression gate
-  SUITE_XML: "src/test/resources/testrunners/testng_regression.xml"
+  CHROME_BINARY: "/usr/bin/google-chrome"
+  DRIVER_PATH: "/usr/local/bin/chromedriver"
+
+  # which suite, and how finely to split it across the pods of the indexed Job.
+  # SHARD_COUNT is matched to parallelism in 05-test-job.yaml - change both together.
+  SUITE_XML: "src/test/resources/testrunners/testng_shard.xml"
+  SHARD_COUNT: "4"

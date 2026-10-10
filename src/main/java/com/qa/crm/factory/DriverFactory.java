@@ -60,7 +60,7 @@ public class DriverFactory
 			else
 			{
 				// Run testcase in local
-				WebDriverManager.chromedriver().setup();
+				setupDriver("chrome");
 				tlDriver.set(new ChromeDriver(optionManager.getChromeOptions()));
 			}
 			
@@ -75,7 +75,7 @@ public class DriverFactory
 			else
 			{
 				// Run testcase in local
-			WebDriverManager.firefoxdriver().setup();
+			setupDriver("firefox");
 			tlDriver.set(new FirefoxDriver(optionManager.getFirefoxOptions()));
 			}
 			
@@ -113,7 +113,34 @@ public class DriverFactory
 		return getDriver();
 	}
 	
-	private void init_remoteDriver(String browserName) 
+	/**
+	 * Resolves the browser driver. Inside the docker/k8s image the driver is installed by apt,
+	 * so we point selenium straight at it. On a laptop, webdrivermanager downloads it.
+	 * @param browserName
+	 */
+	private void setupDriver(String browserName)
+	{
+		String driverPath = prop.getProperty("driverpath");
+		if(driverPath!=null && !driverPath.trim().isEmpty())
+		{
+			System.out.println("Using driver from image: " + driverPath);
+			System.setProperty("webdriver." + browserName.toLowerCase().trim() + ".driver", driverPath);
+			return;
+		}
+		switch(browserName.toLowerCase().trim())
+		{
+		case "chrome":
+			WebDriverManager.chromedriver().setup();
+			break;
+		case "firefox":
+			WebDriverManager.firefoxdriver().setup();
+			break;
+		default:
+			break;
+		}
+	}
+
+	private void init_remoteDriver(String browserName)
 	{
 		try {
 		switch(browserName.toLowerCase().trim())
@@ -220,6 +247,10 @@ public class DriverFactory
 		overrideFromEnv(prop, "REMOTE");
 		overrideFromEnv(prop, "HUB_URL");
 		overrideFromEnv(prop, "CONTAINER");
+		overrideFromEnv(prop, "CHROME_BINARY");
+		overrideFromEnv(prop, "DRIVER_PATH");
+		overrideFromEnv(prop, "SHARD_INDEX");
+		overrideFromEnv(prop, "SHARD_COUNT");
 		return prop;
 	}
 

@@ -1,9 +1,11 @@
-// Dockerised pipeline: every stage runs in a container, nothing is installed
-// on the Jenkins agent except docker itself.
+// Dockerised pipeline: the test image ships headless Chrome, so there is no grid
+// to start - build the image, run it, publish, push, then trigger the sharded Job.
 //
 // Prerequisites on the Jenkins agent:
 //   - docker
+//   - kubectl pointed at the cluster
 //   - a registry credential with id "dockerhub" (username + API token)
+//   - a jenkins credential with id "crm-credentials" (username + password)
 pipeline {
     agent any
 
@@ -11,8 +13,7 @@ pipeline {
         REGISTRY   = 'ghcr.io'
         IMAGE      = "ghcr.io/madhusudan-1990/crm-tests"
         TAG        = "${env.BUILD_NUMBER}"
-        SUITE_XML  = 'src/test/resources/testrunners/testng_regression.xml'
-        HUB_URL    = 'http://selenium-hub:4444/wd/hub'
+        SUITE_XML  = 'src/test/resources/testrunners/testng_shard.xml'
     }
 
     stages {
@@ -30,27 +31,17 @@ pipeline {
             }
         }
 
-        stage('Start Selenium Grid') {
+        stage('Smoke test the image') {
             steps {
-                // detach so the pipeline keeps going, then wait for the hub to be READY
+                // one shard, locally, before anything reaches the cluster
                 sh '''
-                    docker compose up -d --wait hub chrome
-                    curl -sf http://localhost:4444/wd/hub/status | grep -q '"ready": *true'
-                    echo "Grid is up, sessions available: $(curl -s http://localhost:4444/wd/hub/status | grep -o '"maxSessions":[0-9]*' | head -1)"
-                '''
-            }
-        }
-
-        stage('Run tests in container') {
-            steps {
-                // the tests container joins the compose network, so it can
-                // resolve the hostname selenium-hub directly
-                sh '''
-                    docker compose run --rm \
-                      -e USERNAME="$CRM_USERNAME" \
-                      -e PASSWORD="$CRM_PASSWORD" \
-                      -e SUITE_XML="$SUITE_XML" \
-                      tests
+                    docker run --rm \
+                      -e ENV=qa -e BROWSER=chrome -e HEADLESS=true \
+                      -e CONTAINER=true -e REMOTE=false \
+                      -e SHARD_INDEX=0 -e SHARD_COUNT=1 \
+                      -e USERNAME="$CRM_USERNAME" -e PASSWORD="$CRM_PASSWORD" \
+                      -v "$PWD/reports:/app/tests/reports" \
+                      $IMAGE:$TAG
                 '''
             }
         }
@@ -87,12 +78,12 @@ pipeline {
             }
         }
 
-        stage('Deploy test Job to kubernetes') {
+        stage('Run sharded suite on kubernetes') {
             when {
                 branch 'main'
             }
             steps {
-                // the same manifest, only the image tag changes per build
+                // an indexed Job, so each of the 4 pods runs a different slice
                 sh '''
                     sed -i "s|image: $REGISTRY/madhusudan-1990/crm-tests:1.0|image: $IMAGE:$TAG|" k8s/05-test-job.yaml
                     kubectl -n qa-automation delete job crm-regression --ignore-not-found
@@ -107,11 +98,10 @@ pipeline {
 
     post {
         always {
-            // teardown even when the tests fail, otherwise the grid stays up
-            sh 'docker compose down -v --remove-orphans || true'
+            sh 'docker rmi $IMAGE:$TAG 2>/dev/null || true'
         }
         success {
-            echo 'Regression suite passed.'
+            echo 'Sharded regression suite passed.'
         }
         failure {
             echo 'Check the Extent report for the failed step screenshots.'

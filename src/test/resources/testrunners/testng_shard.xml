@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "https://testng.org/testng-1.0.dtd">
+<!--
+  Sharded regression suite. Every class is listed in ONE <test> so that
+  ShardInterceptor sees a single flat list of methods and can split it evenly.
+  Control it with:
+    mvn test -Dsurefire.suiteXmlFiles=src/test/resources/testrunners/testng_shard.xml -Dshard.count=4 -Dshard.index=2
+  or, inside a container, the SHARD_COUNT / SHARD_INDEX env vars.
+-->
+<suite name="CRM App Test Sharded Suite" parallel="methods" thread-count="2" verbose="4">
+  <listeners>
+  	<listener class-name="com.qa.crm.listeners.ShardInterceptor"/>
+  	<listener class-name="com.qa.crm.listeners.ExtentReportListener"/>
+  	<listener class-name="com.qa.crm.listeners.TestAllureListener"/>
+  	<listener class-name="com.qa.crm.listeners.AnnotationTransformer"/>
+  </listeners>
+  <test name="CRM Regression - Sharded">
+    <classes>
+      <class name="com.qa.crm.tests.LoginPageTest"/>
+      <class name="com.qa.crm.tests.HomePageTest"/>
+      <class name="com.qa.crm.tests.ContactsPageTest"/>
+      <class name="com.qa.crm.tests.FormPageTest"/>
+    </classes>
+  </test>
+</suite>

@@ -382,18 +382,19 @@ The repository ships with a **declarative Jenkins pipeline** (`Jenkinsfile`):
 
 ## 🐳 Docker
 
-The whole suite runs in containers. No local JDK, no local Chrome, no local
-Selenium — which is exactly why it works the same on a laptop, on Jenkins and
-in the cluster.
+The whole suite runs in a container that **ships its own headless Chrome**. No
+local JDK, no local Chrome, no local chromedriver — which is exactly why it
+works the same on a laptop, on Jenkins and in the cluster.
 
 | File | What it does |
 |---|---|
-| `Dockerfile` | Two stages. Stage 1 caches the Maven dependencies and packages the jar. Stage 2 is the test runner image that gets pushed to the registry |
+| `Dockerfile` | Single stage. Installs Maven, Chrome and a matching chromedriver at build time, caches the Maven dependencies, runs as a non-root user |
 | `.dockerignore` | Keeps `.git`, `target/`, `reports/` and secrets out of the build context |
-| `docker-compose.yml` | Wires up three services: `hub`, `chrome` and `tests` on one network |
-| `Jenkinsfile_docker` | The same pipeline, but every stage runs in a container |
+| `docker-compose.yml` | One `tests` service, with `shm_size: 2gb` and the reports bind-mounted out |
+| `Jenkinsfile_docker` | Build image → smoke test it → publish reports → push → run the sharded suite on Kubernetes |
+| `src/main/java/com/qa/crm/listeners/ShardInterceptor.java` | Splits the suite into disjoint slices, one per pod |
 
-### Run the whole grid with one command
+### Run it with one command
 
 ```bash
 export CRM_USERNAME=you@example.com
@@ -401,27 +402,20 @@ export CRM_PASSWORD=secret
 docker compose up --build --abort-on-container-exit
 ```
 
-`docker compose up` starts the hub, waits for its healthcheck, starts the
-Chrome node, and only then runs the `tests` container. The framework inside
-resolves the browser at `http://selenium-hub:4444/wd/hub`, which is the
-service name on the compose network.
-
-Open <http://localhost:4444/grid/console> to see the grid, or
-<http://localhost:7901> to watch the browser live over VNC.
-
 Reports land on your host, owned by you:
 
 ```
 ./reports/TestExecutionReport.html    Extent
-./allure-results/                     Allure raw results
-./surefire-reports/                   JUnit XML for Jenkins
-./screenshot/                         Failure screenshots
+./allure-results/                    Allure raw results
+./surefire-reports/                  JUnit XML for Jenkins
+./screenshot/                        Failure screenshots
 ```
 
-### One suite, not the whole regression
+### Run a different suite, or a single shard
 
 ```bash
-docker compose run --rm -e SUITE_XML=src/test/resources/testrunners/testng_smoke.xml tests
+docker compose run --rm -e SUITE_XML=src/test/resources/testrunners/testng_sanity.xml tests
+docker compose run --rm -e SHARD_INDEX=2 -e SHARD_COUNT=4 tests
 ```
 
 ### How the config gets into the container
@@ -429,15 +423,17 @@ docker compose run --rm -e SUITE_XML=src/test/resources/testrunners/testng_smoke
 `DriverFactory.initProp()` loads the `.properties` file as before, then
 **environment variables override it**:
 
-| Env var | Property it sets |
-|---|---|
-| `ENV` | selects `qa/dev/stage/uat/prod.config.properties` |
-| `BROWSER` | `browser` |
-| `REMOTE` | `remote` |
-| `HUB_URL` | `huburl` |
-| `HEADLESS` / `INCOGNITO` / `HIGHLIGHT` | same names, lowercased |
-| `CONTAINER` | adds `--no-sandbox --disable-dev-shm-usage` to Chrome |
-| `USERNAME` / `PASSWORD` | `username` / `password` |
+| Env var | Property it sets | Why it exists |
+|---|---|---|
+| `ENV` | selects `qa/dev/stage/uat/prod.config.properties` | one image, many environments |
+| `BROWSER` | `browser` | |
+| `REMOTE` | `remote` | `false` here — the browser is local to the image |
+| `HEADLESS` / `INCOGNITO` / `HIGHLIGHT` | same names, lowercased | |
+| `CONTAINER` | adds `--no-sandbox --disable-dev-shm-usage` to Chrome | Chrome will not start in a container without these |
+| `CHROME_BINARY` | `chromebinary` | points Chrome at `/usr/bin/google-chrome` |
+| `DRIVER_PATH` | `driverpath` | skips WebDriverManager's download, uses the driver baked into the image |
+| `SHARD_INDEX` / `SHARD_COUNT` | read by `ShardInterceptor` | which slice of the suite this pod runs |
+| `USERNAME` / `PASSWORD` | `username` / `password` | |
 
 So the same image runs the regression on QA and the smoke suite on Stage by
 changing two env vars, never by editing a file and rebuilding.
@@ -449,15 +445,27 @@ changing two env vars, never by editing a file and rebuilding.
 Same containers, one step up. Everything lives in the `qa-automation`
 namespace. See [`k8s/README.md`](k8s/README.md) for the full walkthrough.
 
+There is no Selenium Grid here — each pod is self-contained.
+
 | File | Object | What it does |
 |---|---|---|
-| `k8s/00-namespace.yaml` | Namespace | Isolates the grid from the rest of the cluster |
-| `k8s/01-configmap.yaml` | ConfigMap | Injects `ENV`, `BROWSER`, `REMOTE`, `HUB_URL`, `URL` as env vars — the same ones `initProp()` reads |
+| `k8s/00-namespace.yaml` | Namespace | Isolates the test runs from the rest of the cluster |
+| `k8s/01-configmap.yaml` | ConfigMap | Injects `ENV`, `BROWSER`, `URL`, `SUITE_XML`, `SHARD_COUNT` as env vars — the same ones `initProp()` reads |
 | `k8s/02-secret.example.yaml` | Secret (template) | Credentials. The real `02-secret.yaml` is **gitignored** |
-| `k8s/03-grid-hub.yaml` | Service + Deployment | The Grid 4 hub. The Service name `selenium-hub` is the hostname the tests use |
-| `k8s/04-grid-node.yaml` | Deployment | Chrome nodes. `replicas` = parallel capacity |
-| `k8s/05-test-job.yaml` | Job | Runs `mvn test` and exits 0 or 1. This is what CI triggers |
-| `k8s/06-pvc.yaml` | PVC | Shared volume so reports outlive the pod |
+| `k8s/05-test-job.yaml` | Indexed Job | Runs the suite in 4 parallel shards. This is what CI triggers |
+| `k8s/06-pvc.yaml` | PVC | Shared volume so reports outlive the pods |
+
+### How 4 pods run one suite without colliding
+
+`05-test-job.yaml` uses `completionMode: Indexed` with `parallelism: 4` and
+`completions: 4`. Kubernetes gives each pod a
+`batch.kubernetes.io/job-completion-index` label from 0 to 3, projected into the
+`SHARD_INDEX` env var. `ShardInterceptor` keeps only the methods where
+`methodIndex % SHARD_COUNT == SHARD_INDEX`, so the four pods cover **disjoint**
+slices — no pod repeats another's tests against the same CRM data.
+
+To change the split, edit `parallelism`/`completions` in the Job **and**
+`SHARD_COUNT` in the ConfigMap together.
 
 ### Build, push, run
 
@@ -466,19 +474,20 @@ docker build -t ghcr.io/madhusudan-1990/crm-tests:1.0 .
 docker push ghcr.io/madhusudan-1990/crm-tests:1.0
 
 kubectl apply -f k8s/00-namespace.yaml -f k8s/01-configmap.yaml -f k8s/06-pvc.yaml
-kubectl apply -f k8s/03-grid-hub.yaml -f k8s/04-grid-node.yaml
+kubectl apply -f k8s/02-secret.example.yaml
 kubectl apply -f k8s/05-test-job.yaml
 
+kubectl -n qa-automation get pods -w
 kubectl -n qa-automation logs job/crm-regression -f
 ```
 
 ### Three things that catch people out
 
 1. **`/dev/shm` is 64 MB by default** and Chrome dies with `Tab crashed`.
-   `04-grid-node.yaml` mounts an `emptyDir` with `medium: Memory` and
-   `sizeLimit: 2Gi` at `/dev/shm`.
+   Compose sets `shm_size: 2gb`. On Kubernetes, mount an `emptyDir` with
+   `medium: Memory` at `/dev/shm`.
 2. **`fsGroup: 10001`** on the Job is what lets the non-root image user write
-   into the PVC. Without it you get `Permission denied` on `/app/reports`.
+   into the PVC. Without it you get `Permission denied` on `/app/tests/reports`.
 3. **A Job is immutable.** `kubectl apply` on a modified Job is a silent no-op.
    Delete it first: `kubectl -n qa-automation delete job crm-regression`.
 

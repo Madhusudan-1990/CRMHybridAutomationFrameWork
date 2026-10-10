@@ -1,6 +1,10 @@
-# The actual test run. A Job, not a Deployment, because it must run to
-# completion and exit. backoffLimit=0 means a real test failure does not
-# get silently retried 6 times by kubernetes.
+# The test run. An indexed Job, not a Deployment - a suite must run once to
+# completion and exit, and a Deployment would restart finished pods forever.
+#
+# completionMode: Indexed gives every pod a JOB_COMPLETION_INDEX from 0..completions-1.
+# ShardInterceptor reads it and each pod keeps only the methods where
+# methodIndex % SHARD_COUNT == its index, so the pods cover disjoint slices of the
+# suite instead of all running the same tests against the same application.
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -10,7 +14,10 @@ metadata:
     app: crm-tests
     app.kubernetes.io/part-of: crm-automation
 spec:
-  backoffLimit: 0
+  parallelism: 4              # pods running at once
+  completions: 4              # total pods to succeed - keep equal to SHARD_COUNT
+  completionMode: Indexed     # injects JOB_COMPLETION_INDEX into each pod
+  backoffLimit: 0             # a failed shard must FAIL, not be retried into a green
   activeDeadlineSeconds: 3600
   ttlSecondsAfterFinished: 86400
   template:
@@ -28,7 +35,6 @@ spec:
         fsGroup: 10001
       containers:
         - name: tests
-          # pushed to your registry after: docker build -t <registry>/crm-tests:1.0 .
           image: ghcr.io/madhusudan-1990/crm-tests:1.0
           imagePullPolicy: Always
           envFrom:
@@ -36,6 +42,12 @@ spec:
                 name: crm-framework-config
             - secretRef:
                 name: crm-framework-credentials
+          env:
+            # supplied by the Job controller because completionMode is Indexed
+            - name: SHARD_INDEX
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['batch.kubernetes.io/job-completion-index']
           command: ["mvn"]
           args:
             - "-B"
@@ -43,20 +55,20 @@ spec:
             - "-Dsurefire.suiteXmlFiles=$(SUITE_XML)"
           volumeMounts:
             - name: reports
-              mountPath: /app/reports
+              mountPath: /app/tests/reports
               subPath: reports            # one pvc, a folder each, so they do not collide
             - name: screenshots
-              mountPath: /app/screenshot
+              mountPath: /app/tests/screenshot
             - name: allure
-              mountPath: /app/allure-results
+              mountPath: /app/tests/allure-results
               subPath: allure-results
           resources:
             requests:
-              cpu: 500m
-              memory: 1Gi
-            limits:
               cpu: "1"
-              memory: 2Gi
+              memory: 2Gi                 # headless chrome needs room
+            limits:
+              cpu: "2"
+              memory: 4Gi
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:

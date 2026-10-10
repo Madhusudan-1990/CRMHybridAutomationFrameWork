@@ -1,17 +1,18 @@
 # Kubernetes setup for CRMHybridAutomationFrameWork
 
-Five objects, applied in this order. Everything lives in the `qa-automation`
+Four objects, applied in this order. Everything lives in the `qa-automation`
 namespace so a `kubectl delete namespace qa-automation` cleans the lot.
 
 | File | Object | What it does |
 |---|---|---|
-| `00-namespace.yaml` | Namespace | Isolates the grid and the tests from the rest of the cluster |
-| `01-configmap.yaml` | ConfigMap | Injects `ENV`, `BROWSER`, `REMOTE`, `HUB_URL`, `URL` etc. as env vars. `DriverFactory.initProp()` reads them and they override the `.properties` files |
+| `00-namespace.yaml` | Namespace | Isolates the test runs from the rest of the cluster |
+| `01-configmap.yaml` | ConfigMap | Injects `ENV`, `BROWSER`, `URL`, `SUITE_XML`, `SHARD_COUNT` etc. as env vars. `DriverFactory.initProp()` reads them and they override the `.properties` files |
 | `02-secret.example.yaml` | Secret (template) | Holds the CRM username/password. **Copy to `02-secret.yaml`, fill in, apply that. The real file is gitignored** |
-| `03-grid-hub.yaml` | Service + Deployment | The Grid 4 hub. The Service name `selenium-hub` is the hostname the framework uses |
-| `04-grid-node.yaml` | Deployment | Chrome nodes that register with the hub. `replicas` = parallel capacity |
-| `05-test-job.yaml` | Job | Runs `mvn test`, exits 0 or 1. This is what CI triggers |
-| `06-pvc.yaml` | PersistentVolumeClaim | Shared volume so reports survive the pod |
+| `05-test-job.yaml` | Indexed Job | Runs the suite in 4 parallel shards. This is what CI triggers |
+| `06-pvc.yaml` | PersistentVolumeClaim | Shared volume so reports survive the pods |
+
+There is **no Selenium Grid** in this setup. The image ships headless Chrome, so
+each pod is a self-contained test environment.
 
 ## Deploy
 
@@ -20,8 +21,6 @@ kubectl apply -f k8s/00-namespace.yaml
 kubectl apply -f k8s/01-configmap.yaml
 kubectl apply -f k8s/06-pvc.yaml
 kubectl apply -f k8s/02-secret.example.yaml    # template only, use 02-secret.yaml locally
-kubectl apply -f k8s/03-grid-hub.yaml
-kubectl apply -f k8s/04-grid-node.yaml
 kubectl apply -f k8s/05-test-job.yaml
 ```
 
@@ -32,17 +31,28 @@ kubectl -n qa-automation get pods -w
 kubectl -n qa-automation logs job/crm-regression -f
 ```
 
-Grid console (port-forward, there is no public LoadBalancer):
+## How the sharding works
+
+`05-test-job.yaml` sets `completionMode: Indexed` with `parallelism: 4` and
+`completions: 4`. Kubernetes gives each pod a label
+`batch.kubernetes.io/job-completion-index` from 0 to 3, which is projected into
+the `SHARD_INDEX` env var.
+
+`ShardInterceptor` then keeps only the methods where
+`methodIndex % SHARD_COUNT == SHARD_INDEX`. Four pods, four disjoint slices, one
+suite, no pod running the same test as another.
+
+To change the split, edit **both** `parallelism`/`completions` in
+`05-test-job.yaml` and `SHARD_COUNT` in `01-configmap.yaml`. Keeping them out of
+sync means empty shards or a suite that never finishes.
+
+## Build and push the test image
+
+The Job cannot build, it only runs an image. Push it first:
 
 ```bash
-kubectl -n qa-automation port-forward svc/selenium-hub 4444:4444
-# open http://localhost:4444/grid/console
-```
-
-Clean up:
-
-```bash
-kubectl delete namespace qa-automation
+docker build -t ghcr.io/madhusudan-1990/crm-tests:1.0 .
+docker push ghcr.io/madhusudan-1990/crm-tests:1.0
 ```
 
 ## Re-run after a code change
@@ -54,22 +64,19 @@ kubectl -n qa-automation delete job crm-regression --ignore-not-found
 kubectl apply -f k8s/05-test-job.yaml
 ```
 
-## Build and push the test image
-
-The Job cannot build, it only runs an image. Push it first:
+Clean up:
 
 ```bash
-docker build -t ghcr.io/madhusudan-1990/crm-tests:1.0 .
-docker push ghcr.io/madhusudan-1990/crm-tests:1.0
+kubectl delete namespace qa-automation
 ```
 
 ## Three things that catch people out
 
-1. **`/dev/shm` is 64 MB by default** and Chrome crashes with
-   `Tab crashed`. `04-grid-node.yaml` mounts an `emptyDir` with
-   `medium: Memory` and `sizeLimit: 2Gi` at `/dev/shm`.
+1. **`/dev/shm` is 64 MB by default** and Chrome crashes with `Tab crashed`.
+   Compose sets `shm_size: 2gb`. Inside Kubernetes add an `emptyDir` with
+   `medium: Memory` mounted at `/dev/shm`, or Chrome will die part way through.
 2. **`fsGroup: 10001`** in the Job is what lets the non-root image user write
    into the PVC. Without it the run fails with `Permission denied` on
-   `/app/reports`.
+   `/app/tests/reports`.
 3. **A Job cannot be edited.** `kubectl apply` on a modified Job is a no-op.
    Delete it first (see above), or bump `metadata.name` to `crm-regression-2`.
