@@ -447,7 +447,9 @@ changing two env vars, never by editing a file and rebuilding.
 ## ☸️ Kubernetes
 
 Same containers, one step up. Everything lives in the `qa-automation`
-namespace. See [`k8s/README.md`](k8s/README.md) for the full walkthrough.
+namespace. See [`k8s/README.md`](k8s/README.md) for the full walkthrough and
+[`docs/Docker_Kubernetes_Interview_Guide.html`](docs/Docker_Kubernetes_Interview_Guide.html)
+for an interview-oriented explanation of every file below.
 
 | File | Object | What it does |
 |---|---|---|

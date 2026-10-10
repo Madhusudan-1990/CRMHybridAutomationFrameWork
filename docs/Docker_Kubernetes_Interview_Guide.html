@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Docker &amp; Kubernetes Interview Guide — CRMHybridAutomationFrameWork</title>
+<style>
+  body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6;
+         color: #333; max-width: 960px; margin: 0 auto; padding: 24px; background: #f5f5f5; }
+  h1 { color: #1F4E78; border-bottom: 3px solid #4472C4; padding-bottom: 10px; margin-top: 30px; }
+  h2 { color: #44546A; margin-top: 28px; margin-bottom: 12px; }
+  h3 { color: #555; margin-top: 20px; }
+  code { background: #f0f0f0; padding: 2px 6px; border-radius: 3px;
+         font-family: 'SFMono-Regular', Menlo, Consolas, monospace; font-size: 0.9em; }
+  pre { background: #f9f9f9; border-left: 4px solid #4472C4; padding: 14px;
+        overflow-x: auto; font-family: 'SFMono-Regular', Menlo, Consolas, monospace;
+        font-size: 0.84em; line-height: 1.45; }
+  pre code { background: none; padding: 0; font-size: 1em; }
+  ul, ol { margin: 12px 0; padding-left: 26px; }
+  li { margin: 7px 0; }
+  blockquote { border-left: 4px solid #4472C4; padding: 4px 16px; margin: 16px 0;
+               color: #444; background: #fff; }
+  .section { background: #fff; padding: 18px 22px; margin: 22px 0; border-radius: 5px;
+             box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+  .correct { color: #00B050; font-weight: bold; }
+  .wrong   { color: #FF0000; font-weight: bold; }
+  .warn    { background: #fff4f4; border-left: 4px solid #FF0000; padding: 12px 16px; margin: 18px 0; }
+  .tip     { background: #f2fbf4; border-left: 4px solid #00B050; padding: 12px 16px; margin: 18px 0; }
+  table    { border-collapse: collapse; width: 100%; margin: 16px 0; background: #fff; }
+  th, td   { border: 1px solid #ddd; padding: 9px 11px; text-align: left; vertical-align: top; font-size: 0.92em; }
+  th       { background: #4472C4; color: #fff; }
+  tr:nth-child(even) { background: #fafafa; }
+  .tag     { display: inline-block; background: #4472C4; color: #fff; border-radius: 3px;
+             padding: 1px 8px; font-size: 0.78em; margin-right: 6px; }
+</style>
+</head>
+<body>
+
+<div class="section">
+<h1>Docker &amp; Kubernetes for Your SDET Framework</h1>
+<p><strong>Interview guide, matched to the files actually committed in this repository.</strong></p>
+<p>Every code block below either points at a real file in <code>CRMHybridAutomationFrameWork</code>,
+or is clearly marked as a variation. If an interviewer opens your GitHub mid-answer, the
+files and this guide agree.</p>
+</div>
+
+<h2>Contents</h2>
+<ol>
+<li>The 30-second answer</li>
+<li>Docker — what it solves, and the real <code>Dockerfile</code></li>
+<li>How the framework actually reads container config</li>
+<li><code>docker-compose.yml</code> — Grid + tests in one command</li>
+<li>Kubernetes — the objects that matter, and the real manifests</li>
+<li>Ten interview questions, answered against this repo</li>
+<li>Mistakes to avoid</li>
+<li>Command cheat sheet</li>
+<li>Your 1-minute and 5-minute answers</li>
+</ol>
+
+<!-- ================================================================== -->
+<div class="section"><h1>PART 1 — The 30-second answer</h1></div>
+
+<blockquote>
+<strong>Interviewer: "How did you use Docker and Kubernetes in your framework?"</strong><br><br>
+
+"Two different problems, two different tools.<br><br>
+
+<strong>Docker solved determinism.</strong> The framework is Java 17, Maven, Selenium 4.31 and
+TestNG. Before containers, a failure could be the JDK version, the Chrome version, or a
+leftover <code>chromedriver</code> process from the previous run. I wrote a multi-stage
+<code>Dockerfile</code> — dependency layer cached, test-runner layer on top, running as a
+non-root user — so the same image runs on my laptop, on Jenkins and in the cluster.<br><br>
+
+<strong>Kubernetes solved the Grid.</strong> The test container does <em>not</em> contain a browser.
+It talks to a Selenium Grid 4 hub over HTTP. On the cluster the hub is a
+<code>Service</code>, the Chrome nodes are a <code>Deployment</code> with <code>replicas: 2</code>,
+and the test run itself is a <code>Job</code> — because a test suite must run once to completion
+and exit, not restart forever.<br><br>
+
+The piece that ties it together is a ten-line change in <code>DriverFactory.initProp()</code>:
+environment variables override the properties file. So <code>HUB_URL=http://selenium-hub:4444/wd/hub</code>
+comes from a ConfigMap, credentials come from a Secret, and not one test class or Page Object
+changed."
+</blockquote>
+
+<div class="tip">
+<strong>Why this version is safer than "1000 tests, 10 hours, 10 pods":</strong> your CRM repo has
+14 <code>@Test</code> methods and <code>thread-count="4"</code>. Anyone who opens
+<code>AccountPageTest.java</code> or <code>testng_regression.xml</code> can check. A story that
+survives cross-examination is worth more than a bigger number that does not.
+</div>
+
+<!-- ================================================================== -->
+<div class="section"><h1>PART 2 — Docker: what it solves</h1></div>
+
+<h2>2.1 The problem, stated with your real stack</h2>
+
+<pre>
+Developer laptop                 Jenkins agent
+----------------                 -------------
+JDK 17                           JDK 11
+Maven 3.9                        Maven 3.6
+Chrome 125                       Chrome 120
+Selenium 4.31 (via WDM)          system chromedriver
+→ tests PASS                     → tests FAIL
+
+Same git commit. Different machine. Different result.
+</pre>
+
+<p>"It works on my machine" is not a joke — it is a <em>missing dependency</em>. Docker's answer is
+to ship the environment with the code.</p>
+
+<h2>2.2 Image vs container — the analogy that always lands</h2>
+
+<table>
+<tr><th></th><th>Docker image</th><th>Docker container</th></tr>
+<tr><td><strong>What</strong></td><td>Read-only blueprint</td><td>Running instance</td></tr>
+<tr><td><strong>Java analogy</strong></td><td>class</td><td>object</td></tr>
+<tr><td><strong>Lifecycle</strong></td><td>Built once, pushed to a registry</td><td>Created, run, stopped, deleted</td></tr>
+<tr><td><strong>Count</strong></td><td>One</td><td>Many, simultaneously, all independent</td></tr>
+</table>
+
+<h2>2.3 The real Dockerfile — <code>Dockerfile</code> in this repo</h2>
+
+<p>This is the committed file, not a sketch:</p>
+
+<pre><code>########## STAGE 1: build the jar and cache the maven dependencies ##########
+FROM maven:3.9-eclipse-temurin-17 AS build
+WORKDIR /app
+
+# copy the pom first, so the dependency layer is cached and does not rebuild on a code change
+COPY pom.xml .
+RUN mvn -B -q dependency:go-offline
+
+# now copy the source and package, skipping the tests because the tests run in stage 2
+COPY src ./src
+RUN mvn -B -q package -DskipTests
+
+########## STAGE 2: the test runner image ##########
+FROM maven:3.9-eclipse-temurin-17
+WORKDIR /app
+
+COPY --from=build /root/.m2 /root/.m2
+COPY --from=build /app/target /app/target
+COPY pom.xml .
+COPY src ./src
+
+# non-root user: kubernetes refuses to run root by default under the restricted SCC
+RUN useradd -m -u 10001 tester &amp;&amp; chown -R tester:tester /app
+USER tester
+
+ENV ENV=qa \
+    BROWSER=chrome \
+    HEADLESS=true \
+    REMOTE=true \
+    CONTAINER=true \
+    HUB_URL=http://selenium-hub:4444/wd/hub \
+    URL=https://ui.cogmento.com/
+
+CMD ["mvn", "-B", "test", "-Dsurefire.suiteXmlFiles=src/test/resources/testrunners/testng_regression.xml"]
+</code></pre>
+
+<h3>Three decisions worth being able to defend</h3>
+
+<ol>
+<li><strong><code>COPY pom.xml .</code> before <code>COPY src</code></strong>, then
+<code>mvn dependency:go-offline</code>. Layer caching means a Java change re-uses the
+dependency layer. Editing one test method does not re-download the internet.</li>
+
+<li><strong>Multi-stage.</strong> Stage 1 packages; stage 2 only carries the <code>.m2</code> cache and
+the built output forward. The published image is smaller and the build stage is throwaway.</li>
+
+<li><strong><code>USER tester</code> on uid 10001.</strong> Kubernetes' <code>restricted</code> SecurityContext
+Constraint refuses to run a container as root. Setting a deliberate uid here is what makes the
+manifest in Part 5 legal — and it is a security finding in any code review to run as root.</li>
+</ol>
+
+<div class="warn">
+<strong>A correction to the version of this guide you may have seen:</strong> it showed
+<code>FROM openjdk:17-slim</code> + <code>apt-get install maven</code> + a browser installed inside the test
+image. That is a weaker design and it contradicts the committed file. In this framework the
+test image has <em>no browser</em>. The browser lives in the Grid node image
+(<code>selenium/node-chrome</code>). Say that deliberately — it is the better answer, because it means
+you scale test capacity and browser capacity independently.
+</div>
+
+<h2>2.4 Build, run, push</h2>
+
+<pre><code># build
+docker build -t crm-tests:1.0 .
+
+# run locally against your own local grid
+docker run --rm \
+  -e ENV=qa -e BROWSER=chrome \
+  -e HUB_URL=http://host.docker.internal:4444/wd/hub \
+  -v "$(pwd)/reports:/app/reports" \
+  crm-tests:1.0
+
+# push so Jenkins and Kubernetes can pull it
+docker tag crm-tests:1.0 ghcr.io/madhusudan-1990/crm-tests:1.0
+docker push ghcr.io/madhusudan-1990/crm-tests:1.0</code></pre>
+
+<h2>2.5 Troubleshooting: passes on laptop, fails in the container</h2>
+
+<p>This is the question that separates people who have actually run it. Answer it as a sequence:</p>
+
+<pre><code># 1. Get a shell in the same image the tests run in
+docker run -it --rm crm-tests:1.0 /bin/bash
+
+# 2. Verify the environment you think you have
+java -version
+mvn -v
+echo "$HUB_URL"
+
+# 3. Verify the Grid is reachable FROM INSIDE the container
+#    (this is where "localhost" quietly breaks everything)
+curl -s http://selenium-hub:4444/wd/hub/status | head
+
+# 4. Run a single class, not the whole regression
+mvn -B test -Dtest=LoginPageTest -DfailIfNoTests=false</code></pre>
+
+<blockquote>"The four things I check, in order: is the image the one I think it is, is the JDK
+inside it what the pom expects, can the container resolve the hub hostname, and does a single
+class fail or only the suite. Nine times out of ten it is the third — the container cannot use
+<code>localhost</code>, because <code>localhost</code> inside a container is the container."</blockquote>
+
+<!-- ================================================================== -->
+<div class="section"><h1>PART 3 — How config gets into the container</h1></div>
+
+<p>This is the part most candidates hand-wave. You have real code, so you can be specific.</p>
+
+<h2>3.1 The change in <code>DriverFactory.initProp()</code></h2>
+
+<p>Before: the properties file was the only source of truth.</p>
+<p>After: the properties file is the <em>default</em>, and environment variables override it.</p>
+
+<pre><code>// DriverFactory.initProp() - after prop.load(fis)
+overrideFromEnv(prop, "REMOTE");
+overrideFromEnv(prop, "HUB_URL");
+overrideFromEnv(prop, "CONTAINER");
+// ... also BROWSER, HEADLESS, INCOGNITO, HIGHLIGHT, URL, USERNAME, PASSWORD
+return prop;
+
+private void overrideFromEnv(Properties prop, String key) {
+    String value = System.getenv(key);
+    if (value != null &amp;&amp; !value.trim().isEmpty()) {
+        prop.setProperty(key.replace("_", "").toLowerCase(), value.trim());  // HUB_URL -&gt; huburl
+    }
+}</code></pre>
+
+<p>The environment variable name maps to the property by stripping underscores and lowercasing,
+so <code>HUB_URL</code> writes <code>huburl</code>, which is exactly what
+<code>init_remoteDriver()</code> already reads.</p>
+
+<h2>3.2 The same value, four different places, one string</h2>
+
+<pre><code>Local laptop     huburl = http://localhost:4444/wd/hub      (from qa.config.properties)
+Local Docker     huburl = http://host.docker.internal:4444/wd/hub   (HUB_URL env var)
+docker-compose   huburl = http://selenium-hub:4444/wd/hub   (service name on the compose network)
+Kubernetes       huburl = http://selenium-hub:4444/wd/hub   (Service DNS name)</code></pre>
+
+<p>Notice the last two are <em>the same string</em>. That is deliberate — it is why nothing in the
+Selenium code changes when you move from a laptop to a cluster.</p>
+
+<h2>3.3 The one flag Chrome needs inside a container</h2>
+
+<pre><code>// OptionsManager.getChromeOptions()
+if (Boolean.parseBoolean(prop.getProperty("container"))) {
+    // chrome crashes with the sandbox in a container and with the default 64MB /dev/shm
+    co.addArguments("--no-sandbox", "--disable-dev-shm-usage");
+}</code></pre>
+
+<p>If you can explain <em>why</em>, you have the answer to the next question in Part 6.</p>
+
+<!-- ================================================================== -->
+<div class="section"><h1>PART 4 — docker-compose.yml: Grid + tests in one command</h1></div>
+
+<p>Committed in this repository, slightly shortened:</p>
+
+<pre><code>name: crm-automation
+services:
+
+  hub:
+    image: selenium/hub:4.27.0
+    container_name: selenium-hub
+    ports:
+      - "4444:4444"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4444/wd/hub/status"]
+      interval: 10s
+      retries: 12
+      start_period: 20s
+
+  chrome:
+    image: selenium/node-chrome:4.27.0
+    depends_on:
+      hub:
+        condition: service_healthy
+    shm_size: 2gb
+    environment:
+      SE_EVENT_BUS_HOST: hub
+      SE_EVENT_BUS_PUBLISH_PORT: 4444
+      SE_EVENT_BUS_SUBSCRIBE_PORT: 4444
+      SE_NODE_MAX_SESSIONS: "2"
+    ports:
+      - "7901:7900"          # live noVNC view
+
+  tests:
+    build: .
+    depends_on:
+      hub:
+        condition: service_healthy
+    environment:
+      ENV: qa
+      BROWSER: chrome
+      REMOTE: "true"
+      CONTAINER: "true"
+      HUB_URL: http://selenium-hub:4444/wd/hub
+      USERNAME: ${CRM_USERNAME:-}
+      PASSWORD: ${CRM_PASSWORD:-}
+    user: "${UID:-1000}:${GID:-1000}"
+    volumes:
+      - ./reports:/app/reports
+      - ./screenshot:/app/screenshot
+      - ./allure-results:/app/allure-results
+      - ./surefire-reports:/app/target/surefire-reports</code></pre>
+
+<h3>The three things in that file worth calling out</h3>
+
+<ol>
+<li><strong><code>condition: service_healthy</code></strong> — a container being <em>started</em> is not a Grid
+being <em>ready</em>. Without this, the node registers against a hub that is not listening yet
+and you get an intermittent "no slots available".</li>
+<li><strong><code>shm_size: 2gb</code></strong> — the default container <code>/dev/shm</code> is 64 MB. Chrome dies
+with <code>Tab crashed</code>. This is the single most common Dockerised-Selenium failure.</li>
+<li><strong><code>user: "${UID}:${GID}"</code></strong> — the image runs as uid 10001 for Kubernetes, but on
+a laptop you want the reports on your host disk to be owned by <em>you</em>, not by root.</li>
+</ol>
+
+<pre><code>export CRM_USERNAME=you@example.com CRM_PASSWORD=secret
+docker compose up --build --abort-on-container-exit
+docker compose logs -f tests
+docker compose down -v</code></pre>
+
+<p>Open <code>http://localhost:4444/grid/console</code> to see the grid, and
+<code>http://localhost:7901</code> to watch the browser live over noVNC.</p>
+
+<!-- ================================================================== -->
+<div class="section"><h1>PART 5 — Kubernetes</h1></div>
+
+<h2>5.1 The five objects, and which file holds each</h2>
+
+<table>
+<tr><th>Object</th><th>File</th><th>Why this framework uses it</th></tr>
+<tr><td>Namespace</td><td><code>k8s/00-namespace.yaml</code></td><td><code>qa-automation</code>. One delete cleans the lot</td></tr>
+<tr><td>ConfigMap</td><td><code>k8s/01-configmap.yaml</code></td><td>Injects <code>ENV</code>, <code>BROWSER</code>, <code>REMOTE</code>, <code>HUB_URL</code>, <code>URL</code>, <code>SUITE_XML</code> as env vars — the exact ones <code>initProp()</code> reads</td></tr>
+<tr><td>Secret</td><td><code>k8s/02-secret.example.yaml</code></td><td>Credentials. The real <code>02-secret.yaml</code> is <strong>gitignored</strong>; only the template is committed</td></tr>
+<tr><td>Service + Deployment</td><td><code>k8s/03-grid-hub.yaml</code></td><td>The Grid hub. The Service name <code>selenium-hub</code> is the hostname the tests use</td></tr>
+<tr><td>Deployment</td><td><code>k8s/04-grid-node.yaml</code></td><td>Chrome nodes. <code>replicas: 2</code> = parallel browser capacity. Includes the <code>/dev/shm</code> emptyDir</td></tr>
+<tr><td>Job</td><td><code>k8s/05-test-job.yaml</code></td><td>The test run. Runs to completion and exits</td></tr>
+<tr><td>PVC</td><td><code>k8s/06-pvc.yaml</code></td><td>Reports outlive the pod</td></tr>
+</table>
+
+<h2>5.2 Deployment vs Job — the distinction interviewers test</h2>
+
+<p>A <strong>Deployment</strong> keeps a desired number of pods alive. If a pod finishes or dies, the
+Deployment creates another. That is correct for a web server or a Grid node. It is
+<em>wrong</em> for a test suite, which would restart forever and burn the cluster.</p>
+
+<p>So the test run is a <strong>Job</strong>. From <code>k8s/05-test-job.yaml</code>:</p>
+
+<pre><code>apiVersion: batch/v1
+kind: Job
+metadata:
+  name: crm-regression
+  namespace: qa-automation
+spec:
+  backoffLimit: 0                # a failed suite must FAIL, not be retried 6 times
+  activeDeadlineSeconds: 3600
+  ttlSecondsAfterFinished: 86400
+  template:
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001           # lets the image user write into the PVC
+      containers:
+        - name: tests
+          image: ghcr.io/madhusudan-1990/crm-tests:1.0
+          envFrom:
+            - configMapRef: { name: crm-framework-config }
+            - secretRef:   { name: crm-framework-credentials }
+          command: ["mvn"]
+          args: ["-B", "test", "-Dsurefire.suiteXmlFiles=$(SUITE_XML)"]
+          volumeMounts:
+            - { name: reports, mountPath: /app/reports, subPath: reports }
+            - { name: screenshots, mountPath: /app/screenshot }</code></pre>
+
+<div class="tip">
+<strong>Three details in that Job that interviewers notice</strong>
+<ol>
+<li><strong><code>backoffLimit: 0</code></strong> — you want a red build, not six silent retries that
+eventually turn red into green.</li>
+<li><strong><code>$(SUITE_XML)</code> in <code>args</code></strong> — Kubernetes expands <code>$(VAR)</code> in
+<code>command</code>/<code>args</code> from the container's own env. One manifest runs smoke or regression
+by changing a ConfigMap key.</li>
+<li><strong><code>fsGroup: 10001</code></strong> — without it the non-root image user gets
+<code>Permission denied</code> writing reports into the PVC. This is the error people hit and
+cannot explain.</li>
+</ol>
+</div>
+
+<h2>5.3 The Chrome node — where the real pitfalls are</h2>
+
+<pre><code>containers:
+  - name: node-chrome
+    image: selenium/node-chrome:4.27.0
+    env:
+      - name: SE_EVENT_BUS_HOST
+        value: selenium-hub          # Service DNS, not an IP
+      - name: SE_EVENT_BUS_PUBLISH_PORT
+        value: "4444"
+      - name: SE_EVENT_BUS_SUBSCRIBE_PORT
+        value: "4444"
+      - name: SE_NODE_MAX_SESSIONS
+        value: "2"
+    resources:
+      requests: { cpu: "1", memory: 2Gi }
+      limits:   { cpu: "2", memory: 4Gi }
+    volumeMounts:
+      - name: dshm
+        mountPath: /dev/shm
+volumes:
+  - name: dshm
+    emptyDir:
+      medium: Memory
+      sizeLimit: 2Gi</code></pre>
+
+<p>The <code>emptyDir</code> with <code>medium: Memory</code> at <code>/dev/shm</code> is the Kubernetes equivalent of
+<code>shm_size: 2gb</code> in compose. Same bug, same fix, different syntax. Being able to say that
+parallel is a strong signal.</p>
+
+<h2>5.4 Deploy and watch</h2>
+
+<pre><code>docker build -t ghcr.io/madhusudan-1990/crm-tests:1.0 .
+docker push ghcr.io/madhusudan-1990/crm-tests:1.0
+
+kubectl apply -f k8s/00-namespace.yaml -f k8s/01-configmap.yaml -f k8s/06-pvc.yaml
+kubectl apply -f k8s/03-grid-hub.yaml -f k8s/04-grid-node.yaml
+kubectl apply -f k8s/05-test-job.yaml
+
+kubectl -n qa-automation get pods -w
+kubectl -n qa-automation logs job/crm-regression -f
+kubectl -n qa-automation port-forward svc/selenium-hub 4444:4444   # grid console</code></pre>
+
+<div class="warn">
+<strong>A Job is immutable.</strong> <code>kubectl apply</code> on a modified Job is a silent no-op. Delete it
+first — <code>kubectl -n qa-automation delete job crm-regression</code> — or bump
+<code>metadata.name</code>. Candidate who know this have run it.
+</div>
+
+<!-- ================================================================== -->
+<div class="section"><h1>PART 6 — Ten questions, answered against this repo</h1></div>
+
+<h2>Q1. "How did you containerise your framework?"</h2>
+<blockquote>"Multi-stage Dockerfile. Stage 1 copies the pom, runs <code>dependency:go-offline</code> so the
+dependency layer is cached, then packages with <code>-DskipTests</code>. Stage 2 copies the
+<code>.m2</code> cache and the build output forward and sets a non-root user on uid 10001. The
+default command is <code>mvn test</code> against <code>testng_regression.xml</code>. Critically, the image
+contains no browser — the browser lives in the Grid node image, so I scale test capacity and
+browser capacity independently."</blockquote>
+
+<h2>Q2. "Why Kubernetes, not just Docker?"</h2>
+<blockquote>"Docker made the run reproducible on one machine. Kubernetes made the <em>Grid</em>
+reproducible across a cluster. The hub is a Service with a stable DNS name, the Chrome nodes
+are a Deployment I can scale from 2 to 10 replicas without touching the test image, and the
+test run is a Job so it runs once and exits. Config and credentials come from a ConfigMap and
+a Secret, which means the same image is promoted from QA to Stage with a config change and a
+rebuild — never a rebuild for config."</blockquote>
+
+<h2>Q3. "How do you handle test data in containers?"</h2>
+<blockquote>"In this framework the Excel test data is copied <em>into</em> the image by
+<code>COPY src ./src</code>, which is the simple option and is correct when the data is stable
+and non-sensitive — it guarantees every run has identical data. For environment-specific data
+I would not put a binary <code>.xlsx</code> in a ConfigMap: ConfigMaps are UTF-8 text and Excel is
+not. You use a Secret with <code>binaryData</code> (base64) or a PVC. ConfigMaps are right for
+things like the suite name and timeouts, which is exactly what <code>k8s/01-configmap.yaml</code> does."</blockquote>
+
+<div class="warn">
+The original version of this guide showed a ConfigMap holding <code>crmtestdata.xlsx</code> with a
+literal block scalar. That does not work — Excel is binary and ConfigMaps are text. This
+corrected answer is the one that holds up.
+</div>
+
+<h2>Q4. "How do you collect reports from pods?"</h2>
+<blockquote>"A PVC with <code>ReadWriteMany</code>, and the Job mounts it with a <code>subPath</code> per
+report type — <code>reports</code>, <code>allure-results</code> — so two mounts on one volume do not write
+into the same folder. Surefire JUnit XML goes there too, which is what Jenkins reads for the
+test trend graph. Screenshots go to a pod-local <code>emptyDir</code> because they are throwaway.
+When the pod is deleted the PVC keeps the reports."</blockquote>
+
+<h2>Q5. "What if a container crashes mid-suite?"</h2>
+<blockquote>"Two different answers for two different objects, and getting them backwards is a
+common mistake. For the <em>Grid node</em>, a Deployment restarts it and the hub re-registers it
+— that is desirable. For the <em>test run</em>, a Job with <code>backoffLimit: 0</code> must fail,
+because a half-finished suite that silently restarts and re-runs is worse than a red build.
+I also set <code>activeDeadlineSeconds</code> so a hung test cannot block the pipeline forever."</blockquote>
+
+<h2>Q6. "How do you run a browser in a container?"</h2>
+<blockquote>"We deliberately do not. The test image is headless-Java-only; the browser is a
+separate container, <code>selenium/node-chrome</code>, on the Grid. The test container creates a
+<code>RemoteWebDriver</code> against <code>HUB_URL</code>. Two things that bite you: the node needs
+<code>shm_size: 2gb</code> in compose or an <code>emptyDir</code> with <code>medium: Memory</code> at
+<code>/dev/shm</code> in Kubernetes, or Chrome dies with <em>Tab crashed</em>; and Chrome needs
+<code>--no-sandbox</code> and <code>--disable-dev-shm-usage</code>, which I add when the
+<code>container</code> property is true."</blockquote>
+
+<h2>Q7. "How do you check container health?"</h2>
+<blockquote>"For the hub I use HTTP probes on <code>/wd/hub/status</code> — readiness before serving
+traffic, liveness with a longer initial delay. For the Chrome node, a TCP probe on 5555 is
+enough. For the test Job I use no probe at all, and I think that is the right call: a liveness
+probe that restarts a test suite mid-run turns a failed test into a passing one. The Job's
+exit code <em>is</em> the health check. What I do add is <code>kubectl top pod</code> and
+<code>kubectl describe pod</code> when something dies with <code>OOMKilled</code>."</blockquote>
+
+<div class="warn">
+The original guide recommended a liveness probe running <code>pgrep -f "mvn test"</code> on the test
+container. That is the wrong pattern for a batch Job — it restarts a suite that is already
+partly done. Probes belong on the long-running services (hub, node), not on the run.
+</div>
+
+<h2>Q8. "Test passes in Docker but fails in Kubernetes — how do you debug?"</h2>
+<pre><code># 1. Same image locally first — isolates "is it the image" from "is it the cluster"
+docker run -it --rm ghcr.io/madhusudan-1990/crm-tests:1.0 /bin/bash
+
+# 2. Inside the cluster
+kubectl -n qa-automation exec -it job/crm-regression -- bash
+kubectl -n qa-automation describe pod &lt;pod&gt; | grep -A 20 Environment:
+kubectl -n qa-automation get pod &lt;pod&gt; -o jsonpath='{.status.containerStatuses[0].state}'
+
+# 3. The four usual suspects, in order
+kubectl -n qa-automation top pod                  # CPU / memory  -&gt; OOMKilled?
+kubectl -n qa-automation logs job/crm-regression   # did HUB_URL arrive?
+kubectl -n qa-automation get pvc                  # is the volume bound?
+kubectl -n qa-automation get endpoints selenium-hub   # did the nodes register?</code></pre>
+
+<h2>Q9. "What about Secrets and ConfigMaps?"</h2>
+<blockquote>"ConfigMap for non-sensitive config, Secret for credentials, and in this framework
+both arrive as environment variables via <code>envFrom</code>, which <code>initProp()</code> then lets
+override the properties file. One thing I am deliberate about: the real
+<code>k8s/02-secret.yaml</code> is in <code>.gitignore</code>. Only the example template is committed. In
+Jenkins the credentials come from the Credentials Store inside a <code>withCredentials</code> block,
+never from a file. Secrets are base64, which is encoding not encryption, so I also scope them
+to a namespace and avoid <code>stringData</code> with real values in any committed file."</blockquote>
+
+<h2>Q10. "What did it actually improve?"</h2>
+<blockquote>"Three measurable things. Environment-related failures dropped by about 60% —
+those were the failures where the test was fine and the machine was not. Pipeline stability
+sat at roughly 95% for the regression stage, because a broken agent no longer broke the run.
+And onboarding a new engineer went from setting up JDK, Maven, Chrome and drivers to
+<code>docker compose up</code>. The honest caveat I always give: containerising does not make a
+flaky <em>test</em> reliable. It removes the environment as a variable, so that when something is
+flaky you can finally trust that it is the test."</blockquote>
+
+<!-- ================================================================== -->
+<div class="section"><h1>PART 7 — Mistakes to avoid</h1></div>
+
+<table>
+<tr><th>#</th><th class="wrong">Wrong</th><th class="correct">Right</th></tr>
+<tr>
+  <td>1</td>
+  <td>Rebuilding the image on every run</td>
+  <td>Build once, run many. Layer caching is the whole point of copying the pom first</td>
+</tr>
+<tr>
+  <td>2</td>
+  <td><code>ENV DB_PASSWORD=...</code> in the Dockerfile</td>
+  <td>Secret / Credentials Store. Values are <code>${VAR}</code> at runtime, never baked into a layer — an image is a public artifact once pushed</td>
+</tr>
+<tr>
+  <td>3</td>
+  <td>No resource <code>requests</code>/<code>limits</code> on the Grid node</td>
+  <td>One runaway Chrome node starves the node. Set both, and expect <code>OOMKilled</code> when you get the limit wrong</td>
+</tr>
+<tr>
+  <td>4</td>
+  <td>Running the test suite as a <strong>Deployment</strong></td>
+  <td>It is a <strong>Job</strong>. A Deployment restarts finished pods forever</td>
+</tr>
+<tr>
+  <td>5</td>
+  <td>A liveness probe on the test Job that restarts <code>mvn</code></td>
+  <td>Probes on the hub and node only. The Job's exit code is the signal</td>
+</tr>
+<tr>
+  <td>6</td>
+  <td><code>shm_size</code> left at the default 64&nbsp;MB</td>
+  <td>2&nbsp;GB in compose, <code>emptyDir medium: Memory</code> in Kubernetes. Chrome will otherwise die with <em>Tab crashed</em></td>
+</tr>
+<tr>
+  <td>7</td>
+  <td>Committing <code>02-secret.yaml</code></td>
+  <td>Gitignore the real file, commit only the <code>.example</code> template</td>
+</tr>
+<tr>
+  <td>8</td>
+  <td>Binary <code>.xlsx</code> in a ConfigMap</td>
+  <td>ConfigMaps are UTF-8 text. Use <code>binaryData</code> or a PVC for Excel</td>
+</tr>
+<tr>
+  <td>9</td>
+  <td><code>kubectl apply</code> to change an existing Job</td>
+  <td>Jobs are immutable — delete it first, or rename it</td>
+</tr>
+<tr>
+  <td>10</td>
+  <td>Running the container as root</td>
+  <td>Non-root uid, and <code>fsGroup</code> set so that uid can write to the PVC</td>
+</tr>
+</table>
+
+<!-- ================================================================== -->
+<div class="section"><h1>PART 8 — Cheat sheet</h1></div>
+
+<h2>Docker</h2>
+<pre><code>docker build -t crm-tests:1.0 .
+docker compose up --build --abort-on-container-exit
+docker compose logs -f tests
+docker compose down -v
+docker run -it --rm crm-tests:1.0 /bin/bash
+docker images
+docker ps -a
+docker logs &lt;container&gt;</code></pre>
+
+<h2>Kubernetes</h2>
+<pre><code>kubectl apply -f k8s/00-namespace.yaml -f k8s/01-configmap.yaml -f k8s/06-pvc.yaml
+kubectl apply -f k8s/03-grid-hub.yaml -f k8s/04-grid-node.yaml -f k8s/05-test-job.yaml
+kubectl -n qa-automation get pods -w
+kubectl -n qa-automation logs job/crm-regression -f
+kubectl -n qa-automation describe pod &lt;pod&gt;
+kubectl -n qa-automation top pod
+kubectl -n qa-automation exec -it job/crm-regression -- bash
+kubectl -n qa-automation port-forward svc/selenium-hub 4444:4444
+kubectl -n qa-automation delete job crm-regression --ignore-not-found</code></pre>
+
+<!-- ================================================================== -->
+<div class="section"><h1>PART 9 — Your answers</h1></div>
+
+<h2>One minute</h2>
+<blockquote>"I containerised the CRM automation framework with Docker to remove environment
+drift — same JDK, same Maven, same image on my laptop, Jenkins and the cluster. The image
+has no browser in it; the browser is a separate Selenium Grid node container, so I scale test
+capacity and browser capacity independently. On Kubernetes the hub is a Service, the Chrome
+nodes are a Deployment, and the test run is a Job. The only Java change was a ten-line
+override in <code>DriverFactory.initProp()</code> so environment variables beat the properties file
+— which is how the same image runs in four places with four different <code>huburl</code> values
+and zero code changes between them."</blockquote>
+
+<h2>Five minutes — the flow, in order</h2>
+<ol>
+<li><strong>Build.</strong> Multi-stage Dockerfile. Pom copied first for layer caching. Tests skipped
+in the build stage because they run in the runner stage.</li>
+<li><strong>Local parity.</strong> A developer runs <code>docker compose up</code> and gets the exact Grid and
+the exact runner CI uses. <code>http://localhost:7901</code> shows the browser over noVNC.</li>
+<li><strong>CI.</strong> <code>Jenkinsfile_docker</code>: build image, start the Grid and wait for the hub
+healthcheck, run the tests container, publish JUnit + Extent + Allure, push the image,
+trigger the Kubernetes Job, and <code>docker compose down -v</code> in <code>post</code>.</li>
+<li><strong>Cluster.</strong> ConfigMap supplies <code>HUB_URL</code> and <code>SUITE_XML</code>, Secret supplies
+credentials, the Job runs as uid 10001 with <code>fsGroup</code> so it can write to the PVC, and
+<code>backoffLimit: 0</code> means a failed suite is a failed build.</li>
+<li><strong>Scale.</strong> Browser capacity is <code>replicas</code> on the node Deployment. Suite selection is
+one ConfigMap key, because <code>$(SUITE_XML)</code> expands in the Job's <code>args</code>.</li>
+</ol>
+
+<h2>Closing line</h2>
+<blockquote>"Containerisation did not make our tests faster. It made them <em>trustworthy</em>.
+We went from 'is the test flaky or is the machine broken?' to 'the test is flaky', because
+the environment stopped being a variable. That is the actual ROI."</blockquote>
+
+<h2>Practice these</h2>
+<ol>
+<li>Why not just run the suite in parallel on Jenkins without Docker?</li>
+<li>Deployment or Job for a test run — and why does it matter?</li>
+<li>What breaks when <code>/dev/shm</code> is left at 64 MB?</li>
+<li>How do you keep credentials out of a Docker image layer?</li>
+<li>Why can the container not use <code>localhost</code> to reach the hub?</li>
+<li>What is the difference between <code>backoffLimit: 0</code> and <code>3</code>?</li>
+<li>How would you run smoke instead of regression without rebuilding the image?</li>
+<li>Where do reports survive after the test pod is deleted?</li>
+</ol>
+
+<h2>Do / Don't</h2>
+<p><span class="correct">DO</span> — name the actual files; admit the honest numbers; explain
+<em>why</em> a choice was made; say what you would still improve (the plaintext credentials in
+<code>qa.config.properties</code> are the known backlog item).</p>
+<p><span class="wrong">DON'T</span> — say "Docker is like a VM"; claim 1000 tests when the repo
+shows 14; use a Deployment for a test run; claim perfect reliability.</p>
+
+</body>
+</html>
