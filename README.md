@@ -12,7 +12,6 @@ built with **Selenium WebDriver · TestNG · Maven · Page Object Model**
 [![Jenkins](https://img.shields.io/badge/Jenkins-D24939?style=for-the-badge&logo=jenkins&logoColor=white)](https://www.jenkins.io/)
 [![Extent Reports](https://img.shields.io/badge/Extent_Reports-5.0.8-1B9AAA?style=for-the-badge)]()
 [![Allure](https://img.shields.io/badge/Allure-2.29-B732CC?style=for-the-badge&logo=allure&logoColor=white)](https://allurereport.org/)
-[![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
 
 *Automation framework for the **Cogmento / FreeCRM** web application — Login, Home, Contacts & Forms.*
 
@@ -638,12 +637,6 @@ Then register it in the suite XML with the three required parameters:
 4. Keep assertions in tests, keep pages assertion-free
 5. Add your test class to the relevant suite XML
 6. Open a Pull Request with a clear description
-
----
-
-## 📜 License
-
-This project is licensed under the MIT License — feel free to use it as a learning resource or a starting point for your own automation framework.
 
 ---
 
